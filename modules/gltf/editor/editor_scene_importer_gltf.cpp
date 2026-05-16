@@ -81,7 +81,7 @@ Node *EditorSceneFormatImporterGLTF::import_scene(const String &p_path, uint32_t
 	bool trimming = p_options.has("animation/trimming") ? (bool)p_options["animation/trimming"] : false;
 	return gltf_doc->generate_scene(gltf_state, gltf_state->get_bake_fps(), trimming, false);
 #else
-	return gltf->generate_scene(state, state->get_bake_fps(), (bool)p_options["animation/trimming"], false);
+	return gltf_doc->generate_scene(gltf_state, gltf_state->get_bake_fps(), (bool)p_options["animation/trimming"], false);
 #endif
 }
 
@@ -100,7 +100,7 @@ void EditorSceneFormatImporterGLTF::handle_compatibility_options(HashMap<StringN
 	if (!p_import_params.has("gltf/texture_map_mode")) {
 		// If an existing import file is missing the glTF
 		// texture map mode, we need to use "Do Not Remap".
-		p_import_params["gltf/naming_version"] = (int64_t)GLTFDocument::TEXTURE_MAP_MODE_DO_NOT_REMAP;
+		p_import_params["gltf/texture_map_mode"] = (int64_t)GLTFDocument::TEXTURE_MAP_MODE_DO_NOT_REMAP;
 	}
 }
 

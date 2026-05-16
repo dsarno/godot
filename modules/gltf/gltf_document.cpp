@@ -74,12 +74,6 @@
 #include "modules/gridmap/grid_map.h"
 #endif
 
-// FIXME: Hardcoded to avoid editor dependency.
-#define GLTF_IMPORT_GENERATE_TANGENT_ARRAYS 8
-#define GLTF_IMPORT_USE_NAMED_SKIN_BINDS 16
-#define GLTF_IMPORT_DISCARD_MESHES_AND_MATERIALS 32
-#define GLTF_IMPORT_FORCE_DISABLE_MESH_COMPRESSION 64
-
 #include <cstdio>
 #include <cstdlib>
 
@@ -726,7 +720,6 @@ Error GLTFDocument::_encode_buffer_glb(Ref<GLTFState> p_state, const String &p_p
 		if (buffer_data.is_empty()) {
 			return OK;
 		}
-		file->create(FileAccess::ACCESS_RESOURCES);
 		file->store_buffer(buffer_data.ptr(), buffer_data.size());
 		gltf_buffer["uri"] = filename;
 		gltf_buffer["byteLength"] = buffer_data.size();
@@ -758,7 +751,6 @@ Error GLTFDocument::_encode_buffer_bins(Ref<GLTFState> p_state, const String &p_
 		if (buffer_data.is_empty()) {
 			return OK;
 		}
-		file->create(FileAccess::ACCESS_RESOURCES);
 		file->store_buffer(buffer_data.ptr(), buffer_data.size());
 		gltf_buffer["uri"] = filename;
 		gltf_buffer["byteLength"] = buffer_data.size();
@@ -6827,7 +6819,6 @@ Error GLTFDocument::_serialize_file(Ref<GLTFState> p_state, const String p_path)
 		ERR_FAIL_COND_V_MSG(total_file_length > (uint64_t)UINT32_MAX, ERR_CANT_CREATE,
 				"glTF: File size exceeds glTF Binary's maximum of 4 GiB. Cannot serialize as a GLB file.");
 
-		file->create(FileAccess::ACCESS_RESOURCES);
 		file->store_32(magic);
 		file->store_32(p_state->major_version); // version
 		file->store_32(total_file_length);
@@ -6855,7 +6846,6 @@ Error GLTFDocument::_serialize_file(Ref<GLTFState> p_state, const String p_path)
 		Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::WRITE, &err);
 		ERR_FAIL_COND_V(file.is_null(), FAILED);
 
-		file->create(FileAccess::ACCESS_RESOURCES);
 		String json = JSON::stringify(p_state->json, "", true, true);
 		file->store_string(json);
 	}
@@ -6873,6 +6863,11 @@ void GLTFDocument::_bind_methods() {
 	BIND_ENUM_CONSTANT(VISIBILITY_MODE_INCLUDE_REQUIRED);
 	BIND_ENUM_CONSTANT(VISIBILITY_MODE_INCLUDE_OPTIONAL);
 	BIND_ENUM_CONSTANT(VISIBILITY_MODE_EXCLUDE);
+
+	BIND_BITFIELD_FLAG(IMPORT_FLAG_GENERATE_TANGENT_ARRAYS);
+	BIND_BITFIELD_FLAG(IMPORT_FLAG_USE_NAMED_SKIN_BINDS);
+	BIND_BITFIELD_FLAG(IMPORT_FLAG_DISCARD_MESHES_AND_MATERIALS);
+	BIND_BITFIELD_FLAG(IMPORT_FLAG_FORCE_DISABLE_MESH_COMPRESSION);
 
 	ClassDB::bind_method(D_METHOD("set_image_format", "image_format"), &GLTFDocument::set_image_format);
 	ClassDB::bind_method(D_METHOD("get_image_format"), &GLTFDocument::get_image_format);
@@ -7273,10 +7268,10 @@ Error GLTFDocument::append_from_scene(Node *p_node, Ref<GLTFState> p_state, uint
 	ERR_FAIL_NULL_V(p_node, FAILED);
 	Ref<GLTFState> state = p_state;
 	ERR_FAIL_COND_V(state.is_null(), FAILED);
-	state->use_named_skin_binds = p_flags & GLTF_IMPORT_USE_NAMED_SKIN_BINDS;
-	state->discard_meshes_and_materials = p_flags & GLTF_IMPORT_DISCARD_MESHES_AND_MATERIALS;
-	state->force_generate_tangents = p_flags & GLTF_IMPORT_GENERATE_TANGENT_ARRAYS;
-	state->force_disable_compression = p_flags & GLTF_IMPORT_FORCE_DISABLE_MESH_COMPRESSION;
+	state->use_named_skin_binds = p_flags & ImportFlags::IMPORT_FLAG_USE_NAMED_SKIN_BINDS;
+	state->discard_meshes_and_materials = p_flags & ImportFlags::IMPORT_FLAG_DISCARD_MESHES_AND_MATERIALS;
+	state->force_generate_tangents = p_flags & ImportFlags::IMPORT_FLAG_GENERATE_TANGENT_ARRAYS;
+	state->force_disable_compression = p_flags & ImportFlags::IMPORT_FLAG_FORCE_DISABLE_MESH_COMPRESSION;
 	if (!state->buffers.size()) {
 		state->buffers.push_back(Vector<uint8_t>());
 	}
@@ -7321,10 +7316,10 @@ Error GLTFDocument::append_from_buffer(const PackedByteArray &p_bytes, const Str
 	ERR_FAIL_COND_V(state.is_null(), FAILED);
 	// TODO Add missing texture and missing .bin file paths to r_missing_deps 2021-09-10 fire
 	Error err = FAILED;
-	state->use_named_skin_binds = p_flags & GLTF_IMPORT_USE_NAMED_SKIN_BINDS;
-	state->discard_meshes_and_materials = p_flags & GLTF_IMPORT_DISCARD_MESHES_AND_MATERIALS;
-	state->force_generate_tangents = p_flags & GLTF_IMPORT_GENERATE_TANGENT_ARRAYS;
-	state->force_disable_compression = p_flags & GLTF_IMPORT_FORCE_DISABLE_MESH_COMPRESSION;
+	state->use_named_skin_binds = p_flags & ImportFlags::IMPORT_FLAG_USE_NAMED_SKIN_BINDS;
+	state->discard_meshes_and_materials = p_flags & ImportFlags::IMPORT_FLAG_DISCARD_MESHES_AND_MATERIALS;
+	state->force_generate_tangents = p_flags & ImportFlags::IMPORT_FLAG_GENERATE_TANGENT_ARRAYS;
+	state->force_disable_compression = p_flags & ImportFlags::IMPORT_FLAG_FORCE_DISABLE_MESH_COMPRESSION;
 
 	Ref<FileAccessMemory> file_access;
 	file_access.instantiate();
@@ -7347,10 +7342,10 @@ Error GLTFDocument::append_from_file(const String &p_path, Ref<GLTFState> p_stat
 		state.instantiate();
 	}
 	state->set_filename(p_path.get_file().get_basename());
-	state->use_named_skin_binds = p_flags & GLTF_IMPORT_USE_NAMED_SKIN_BINDS;
-	state->discard_meshes_and_materials = p_flags & GLTF_IMPORT_DISCARD_MESHES_AND_MATERIALS;
-	state->force_generate_tangents = p_flags & GLTF_IMPORT_GENERATE_TANGENT_ARRAYS;
-	state->force_disable_compression = p_flags & GLTF_IMPORT_FORCE_DISABLE_MESH_COMPRESSION;
+	state->use_named_skin_binds = p_flags & ImportFlags::IMPORT_FLAG_USE_NAMED_SKIN_BINDS;
+	state->discard_meshes_and_materials = p_flags & ImportFlags::IMPORT_FLAG_DISCARD_MESHES_AND_MATERIALS;
+	state->force_generate_tangents = p_flags & ImportFlags::IMPORT_FLAG_GENERATE_TANGENT_ARRAYS;
+	state->force_disable_compression = p_flags & ImportFlags::IMPORT_FLAG_FORCE_DISABLE_MESH_COMPRESSION;
 
 	Error err;
 	Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::READ, &err);
