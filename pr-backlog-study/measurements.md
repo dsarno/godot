@@ -179,6 +179,43 @@ The second was **independently reproduced against a locally built engine**:
 
 Extrapolation: ~35 comparable subsystems x ~200k tokens = ~7M tokens for a first full sweep.
 
+
+## L. Sanitizer build — attempted twice, not achievable on this hardware
+
+Godot's CI linux job runs ASan/UBSan/TSan. Reproducing that locally was attempted as a substitute
+for the unavailable fork CI. **Both attempts died silently**, and the failure mode is worth
+recording because it generalises.
+
+| attempt | config | reached | outcome |
+|---|---|---|---|
+| 1 | `use_asan use_ubsan dev_build=yes scu_build=yes -j4` | 3,557 objects, died in `editor/animation` SCU unit | silent death |
+| 2 | `use_asan use_ubsan scu_build=no debug_symbols=no -j3` | 3,712 objects, died on `tests/servers/test_text_server.cpp` | silent death |
+
+Both stopped mid-compile with **no error line in the log**, no compiler process left, and no
+further object files — the signature of the OOM killer. Sanitizer instrumentation plus large
+translation units exceeds 15 GB even at `-j3` with SCU disabled and debug symbols off.
+
+**The transferable lesson is about liveness detection, not about memory.** In both cases the last
+log line looked like ordinary progress, and the build was reported as "still compiling" on two
+separate checks before the death was noticed. A tail of the log cannot distinguish *working* from
+*dead*. The reliable signals are:
+
+- compiler process count (`pgrep -c cc1plus`)
+- object files written in the last N minutes (`find … -newermt`)
+- log file mtime versus wall clock
+
+Any pipeline running builds at scale needs those as an explicit liveness check with a stall
+timeout. At 50-way concurrency a silently dead build is indistinguishable from a slow one, and
+would be reported as success-in-progress indefinitely. This also constrains the M1 benchmark
+harness: it must record build configuration alongside results and **fail loudly** on a dead build,
+because a benchmark table with a row silently missing is worse than no table.
+
+**Sanitizer coverage for the hash-table branch is not absent**, it just came from a better-targeted
+source: a standalone ASan+UBSan differential fuzzer against `std::unordered_map`/`set` (40 seeds x
+4 workloads, adversarial hashers, allocation-owning key/value types) ran clean with zero leaks.
+For a container, that is stronger evidence than a whole-engine sanitizer pass would have been.
+Whole-engine sanitizer coverage belongs in CI — which is milestone M0.
+
 ## I. Infrastructure findings
 
 - **Fork CI does not run.** All 9 Godot workflows are present and `state: active` on the fork,
