@@ -1,5 +1,11 @@
 # Clearing the Godot PR backlog with agents — a feasibility study
 
+> **Framing note (2026-07-29).** This document evaluates the work as a *cost* question. That turned
+> out to be the wrong question — see **`PROJECT-BRIEF.md`**, which supersedes it. The project's
+> purpose is to produce reproducible evidence that agent-driven work can help an open-source engine,
+> for an audience of sceptical maintainers rather than a budget holder. The measurements below all
+> stand; the "is it worthwhile" conclusion does not.
+
 **Date of measurement: 2026-07-29.** Every number here was measured during the study, not
 estimated from priors. Where something is an estimate, it says so.
 
