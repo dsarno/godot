@@ -204,3 +204,32 @@ Press framed this as a flat ban; the actual text is narrower (discouraged / enti
 disclosure mandatory). Either way the operative constraint on the upstream path is a **human who
 understands and can defend each change** — which is exactly the bottleneck the exercise set out
 to relieve.
+
+## K. Local CI-equivalent verification (Actions unavailable)
+
+The fork's Actions cannot be enabled from this environment: the agent proxy blocks the endpoint
+outright — `GET /repos/{owner}/{repo}/actions/permissions` returns
+`403 {"message":"Access to this GitHub Actions path is not permitted through this proxy."}` — and
+`workflow_dispatch` separately returns `403 Resource not accessible by integration`. This is a
+deliberate guardrail, not a token-scope gap. Enabling Actions is a manual repo-settings change.
+
+As a substitute, Godot's own static-check scripts (the `static_checks` CI job) were run locally
+against every changed file on all three code branches:
+
+| branch | header_guards | copyright_headers | validate_includes | file_format | validate_xml | clang-format |
+|---|---|---|---|---|---|---|
+| physics-manual-space-step | ✓ 11 hdr | ✓ 19 | ✓ | ✓ | ✓ 4 | ✓ |
+| gridmap-hex-cells | ✓ 3 hdr | ✓ 5 | ✓ | ✓ | ✓ 1 | ✓ |
+| core-ahashmap-rewrite | ✓ 3 hdr | ✓ 6 | ✓ | – | – | ✓ |
+
+**Method note worth carrying forward.** The first attempt ran these scripts on all changed C++
+files. `header_guards.py` is scoped in `.pre-commit-config.yaml` to `\.(h|hpp|hh|hxx)$`, with no
+such check inside the script itself — handed `.cpp` files it inserted `#pragma once` into each and
+reported `FIXED`. Eight source files across the three worktrees were silently corrupted. Caught by
+`git status`, reverted with `git checkout --`, and confirmed byte-identical to the pushed branches;
+nothing reached GitHub.
+
+The generalisable lesson: **several of these "checks" are autofixers — they are writes, not reads.**
+Any pipeline invoking a project's lint scripts directly must replicate the config's `files:` filters
+and assert a clean `git status --porcelain` afterwards, or it will corrupt the tree while reporting
+success.

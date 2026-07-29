@@ -237,7 +237,13 @@ Recommended gates, in the order they pay off:
    exist" are different claims, and only one of them is cheap to fake by accident.
 3. Every claimed bug fix must have a test that fails without the fix. Demonstrate the failure.
 4. Style and doc consistency checks (`clang-format`, `--doctool` zero-diff) — cheap, and they catch
-   real breakage rather than cosmetics.
+   real breakage rather than cosmetics. **Run the project's lint scripts with the project's own file
+   filters, and diff the tree afterwards.** Several of Godot's `misc/scripts/*.py` hooks rewrite files
+   in place and are scoped by a `files:` regex in `.pre-commit-config.yaml` rather than by any check
+   inside the script — `header_guards.py` given a `.cpp` file will cheerfully insert `#pragma once`
+   into it and print `FIXED`. Invoking those scripts directly without replicating the filter silently
+   corrupts source. A `git status --porcelain` assertion after any "check" step is the cheap guard,
+   and it belongs in the pipeline: an autofixing linter is a write, not a read.
 5. Where a change claims a performance win, benchmark it against the thing it claims to beat, and
    report the result even when it disagrees with the premise.
 6. An independent reviewer agent that did not write the change, prompted to refute rather than confirm.
