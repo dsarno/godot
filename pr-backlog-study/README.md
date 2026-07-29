@@ -182,6 +182,44 @@ Recommended gates, in the order they pay off:
 
 ---
 
+## The other workstream: auditing code that nobody sent you
+
+A bounded audit was run over one hot subsystem — `core/string` (`ustring`, `string_name`,
+`string_builder`, ~7,400 lines read end to end). Cost: **202k tokens, 33 tool calls, ~30 minutes**.
+Yield: **29 findings — 2 High, 11 Medium, 16 Low**, 28 of them verified by reading the surrounding
+code rather than asserted.
+
+The two High findings are real bugs in shipped code:
+
+1. **Heap overflow in `String::repeat()`** (`ustring.cpp:3936`). `p_count * len` is computed in
+   `int` and the `resize_uninitialized()` error return is discarded, then the code memcpys
+   unconditionally. `repeat`, `lpad` and `rpad` are all script-bound, so `"ab".repeat(1073741824)`
+   is a one-line reach from GDScript.
+2. **Integer-overflow guard in `String::to_int()` fires one digit too late** (`ustring.cpp:2281`),
+   so every 19-digit input bypasses it. **Independently reproduced here against the built engine:**
+
+   ```
+   "9223372036854775807".to_int()  ->  9223372036854775807   (correct)
+   "9223372036854775808".to_int()  -> -9223372036854775808   (silently wraps)
+   "9999999999999999999".to_int()  -> -8446744073709551617
+   "-9223372036854775809".to_int() ->  9223372036854775807   (negative in, positive out)
+   ```
+
+   No error is printed. Any project parsing untrusted numeric text is exposed.
+
+Also found: `append_utf16()` calls `clear()` when its input decodes to nothing — an *append* that
+destroys existing content, unlike all four sibling `append_*` functions; `c_unescape()` mishandles
+`\\n`; `uri_decode()` silently ignores lowercase hex escapes like `%2f`; and `sprintf()` — which
+backs `vformat()` and every engine error message — appends literal text one character at a time
+through the full UTF-32 validation path with no `reserve()`.
+
+**This is the better investment.** Per token it produced more defensible value than PR processing,
+and it has no human-throughput ceiling baked in: findings can be queued and triaged at whatever
+rate suits, they do not depend on a stranger's three-year-old patch, and each one is independently
+verifiable. Godot has on the order of 30–40 comparable subsystems; at ~200k tokens each that is
+roughly 8M tokens — **under $1 on a cheap model, about $50 on Opus 5** — for a first full sweep.
+Full findings in `audit-core-string.md`.
+
 ## The upstream wall
 
 The value produced here cannot simply be pushed upstream. Godot's rules, effective ~2026-06-30:
@@ -221,14 +259,15 @@ Godot's full 7-platform matrix including ASan/UBSan/TSan.
 4. **Then scale**, with model choice set by measured defect-catch rate on that subsystem rather
    than by list price.
 
-The continuous-audit workstream (finding existing problems, not just processing PRs) is likely
-the better long-term investment. It has no human-throughput ceiling built into it — findings can
-be queued and triaged at whatever rate suits — and it does not depend on the quality of a
-three-year-old stranger's patch.
+**Run the audit sweep first, regardless.** It is the cheapest thing on this list — a full pass over
+every major subsystem is single-digit dollars on an open-weight model — and the `core/string` pilot
+alone surfaced two exploitable bugs in code that ships today. It needs no backlog, no rebasing, and
+no upstream cooperation.
 
 ---
 
 ## Files
 
 - `measurements.md` — every raw number, with how it was obtained
-- Interactive model — vary any assumption and see which constraint binds
+- `audit-core-string.md` — 29 findings from the subsystem audit, ranked, with file:line
+- `calculator.html` — interactive model; vary any assumption and see which constraint binds
