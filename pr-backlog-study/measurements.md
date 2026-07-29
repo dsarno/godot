@@ -114,7 +114,46 @@ placement, displacing every mesh in a baked hex map.
 review — 5 defects in leg 1, 6+ in leg 3, all in code humans had already reviewed. Token cost per
 hard PR landed at 275k (leg 1, partly estimated) and 331k (leg 3, exact).
 
-## G. Subsystem audit — `core/string`
+## G. Pilot leg 4 — shared hash-table core + AHashSet (delegated agent), completed
+
+| quantity | measured |
+|---|---|
+| merge-base drift | 3,420 commits behind |
+| source commits | 36, squashed on rebase |
+| final branch | 2 commits, 6 files, +1,046 / -207 |
+| **agent tokens** | **223,793** (exact) |
+| tool calls | 114 |
+| build time | ~24 min across 5 scons invocations |
+| defects found & fixed | 4 |
+| defects found & deliberately NOT fixed | 3 (pre-existing; reproduce on the merge-base header) |
+| tests | 58 cases / **57,217 assertions** passing; net +18 cases / +4,824 assertions vs master |
+| revert-proof | yes — reverting 3 testable fixes fails exactly 4 cases / 7 assertions |
+| extra verification | ASAN+UBSAN differential fuzz vs `std::unordered_map`/`set` (40 seeds x 4 workloads); behavioural-signature diff pre/post refactor byte-identical over 60 seeds x 6,000 ops |
+
+**The single most valuable finding was procedural, not technical:** `tests/SCsub` globs `*/**/*.cpp`,
+and the change's new test file was named `.h` — so its **263 lines of tests had never been compiled
+or run**. Renaming it exposed a latent compile error immediately. A green CI badge on the original
+branch would have meant nothing for this container.
+
+Defects fixed: vestigial `virtual` destructor from a pre-CRTP design making every container
+polymorphic (`sizeof(AHashMap<int,int>)` 24 -> 32 bytes engine-wide); `AHashSet::insert()`
+overwriting a stored duplicate where `HashSet::insert()` keeps it; missing move assignment causing
+silent deep copies; `reset()` leaving a dangling metadata pointer.
+
+Two of the four were found by **diffing the new container's API against `HashSet`'s** — a cheap,
+repeatable technique worth building into the pipeline for any new API surface.
+
+Not fixed (correctly scoped out): a heap-use-after-free when an `insert()` argument aliases the
+container's own storage and triggers a rehash (ASAN trace captured); `reserve()` able to shrink
+capacity; capacity math overflowing above 2^31 entries.
+
+**Benchmarks were run and reported honestly against the change's own premise.** New vs pre-refactor
+`AHashMap` is within +/-2% on insert/lookup/erase/iterate at N=1e6 — the extraction is
+performance-neutral, as a deduplication should be. The large wins over `HashMap`/`HashSet`
+(~1.6x insert, ~1.7-2.2x lookup, ~6x iteration) predate the change. An agent optimising for
+looking good would have reported the second table and omitted the first.
+
+## H. Subsystem audit — `core/string`
 
 | quantity | measured |
 |---|---|
@@ -140,7 +179,7 @@ The second was **independently reproduced against a locally built engine**:
 
 Extrapolation: ~35 comparable subsystems x ~200k tokens = ~7M tokens for a first full sweep.
 
-## H. Infrastructure findings
+## I. Infrastructure findings
 
 - **Fork CI does not run.** All 9 Godot workflows are present and `state: active` on the fork,
   but GitHub disables Actions on forked repos until the owner enables them; the only run in
@@ -151,7 +190,7 @@ Extrapolation: ~35 comparable subsystems x ~200k tokens = ~7M tokens for a first
 - Godot's own CI matrix is 7 jobs incl. ASan/UBSan/TSan, mono, doubles, 4 desktop + mobile +
   web platforms. Reproducing that per PR is the dominant compute cost at scale, not tokens.
 
-## I. Governance finding (decisive for the upstream path)
+## J. Governance finding (decisive for the upstream path)
 
 `godotengine/godot-contributing-docs` → `pull_requests/pull_request_guidelines.rst`:
 
