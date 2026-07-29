@@ -545,7 +545,7 @@ public:
 		}
 	}
 
-	virtual ~AHashMap() override {
+	~AHashMap() {
 		reset();
 	}
 };

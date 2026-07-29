@@ -292,10 +292,14 @@ public:
 			_v_clear_elements();
 			_v_free_elements();
 			Memory::free_static(_metadata);
+			_metadata = nullptr;
 		}
 		_capacity_mask = INITIAL_CAPACITY - 1;
 		_size = 0;
 	}
 
-	virtual ~RawAHashTable() {}
+protected:
+	// Protected and non-virtual: the derived containers are `final` and are only ever
+	// reached statically through CRTP, so a vtable pointer would grow every instance.
+	~RawAHashTable() {}
 };

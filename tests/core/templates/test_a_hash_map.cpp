@@ -311,4 +311,9 @@ TEST_CASE("[AHashMap] Array methods") {
 	CHECK(map.get_index(1) == -1);
 }
 
+TEST_CASE("[AHashMap] No vtable pointer") {
+	CHECK_FALSE(std::is_polymorphic_v<AHashMap<int, int>>);
+	CHECK(sizeof(AHashMap<int, int>) == 2 * sizeof(void *) + 2 * sizeof(uint32_t));
+}
+
 } // namespace TestAHashMap

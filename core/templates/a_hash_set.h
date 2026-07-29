@@ -279,8 +279,6 @@ public:
 
 		if (!exists) {
 			element_idx = _insert_element(p_key, hash);
-		} else {
-			_elements[element_idx] = p_key;
 		}
 		return Iterator(_elements + element_idx, _elements, _elements + _size);
 	}
@@ -311,6 +309,17 @@ public:
 		reset();
 
 		_init_from(p_other);
+	}
+
+	void operator=(AHashSet &&p_other) {
+		if (this == &p_other) {
+			return; // Ignore self assignment.
+		}
+
+		SWAP(_elements, p_other._elements);
+		SWAP(_metadata, p_other._metadata);
+		SWAP(_capacity_mask, p_other._capacity_mask);
+		SWAP(_size, p_other._size);
 	}
 
 	bool operator==(const AHashSet &p_other) const {
@@ -344,7 +353,7 @@ public:
 		}
 	}
 
-	virtual ~AHashSet() override {
+	~AHashSet() {
 		reset();
 	}
 };

@@ -36,6 +36,14 @@ TEST_FORCE_LINK(test_a_hash_set)
 
 namespace TestAHashSet {
 
+// Distinguishes elements that compare equal, so that a redundant insert is observable.
+struct CaseInsensitiveHasher {
+	static uint32_t hash(const String &p_key) { return p_key.to_lower().hash(); }
+};
+struct CaseInsensitiveComparator {
+	static bool compare(const String &p_lhs, const String &p_rhs) { return p_lhs.nocasecmp_to(p_rhs) == 0; }
+};
+
 TEST_CASE("[AHashSet] List initialization") {
 	AHashSet<int> set{ 0, 1, 2, 3, 4 };
 
@@ -72,6 +80,54 @@ TEST_CASE("[AHashSet] Insert existing element") {
 
 	CHECK(set.has(42));
 	CHECK(set.size() == 1);
+}
+
+TEST_CASE("[AHashSet] Insert keeps the element already stored") {
+	AHashSet<String, CaseInsensitiveHasher, CaseInsensitiveComparator> set;
+	set.insert("Godot");
+	AHashSet<String, CaseInsensitiveHasher, CaseInsensitiveComparator>::Iterator e = set.insert("GODOT");
+
+	CHECK(set.size() == 1);
+	CHECK(*set.begin() == "Godot");
+	CHECK(*e == "Godot");
+}
+
+TEST_CASE("[AHashSet] Move assignment") {
+	AHashSet<int> set{ 1, 2, 3 };
+	AHashSet<int> moved;
+	moved = std::move(set);
+
+	CHECK(moved.size() == 3);
+	CHECK(moved.has(1));
+	CHECK(moved.has(2));
+	CHECK(moved.has(3));
+	CHECK(set.is_empty());
+}
+
+TEST_CASE("[AHashSet] No vtable pointer") {
+	CHECK_FALSE(std::is_polymorphic_v<AHashSet<int>>);
+	CHECK(sizeof(AHashSet<int>) == 2 * sizeof(void *) + 2 * sizeof(uint32_t));
+}
+
+TEST_CASE("[AHashSet] Reuse after reset") {
+	AHashSet<int> set;
+	for (int i = 0; i < 100; i++) {
+		set.insert(i);
+	}
+	set.reset();
+
+	CHECK(set.is_empty());
+	CHECK(!set.has(0));
+
+	set.reserve(64);
+	for (int i = 0; i < 100; i++) {
+		set.insert(i * 2);
+	}
+
+	CHECK(set.size() == 100);
+	for (int i = 0; i < 100; i++) {
+		CHECK(set.has(i * 2));
+	}
 }
 
 TEST_CASE("[AHashSet] Insert, iterate and remove many elements") {
