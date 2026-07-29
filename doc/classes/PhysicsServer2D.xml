@@ -951,11 +951,27 @@
 				Creates a 2D space in the physics server, and returns the [RID] that identifies it. A space contains bodies and areas, and controls the stepping of the physics simulation of the objects in it.
 			</description>
 		</method>
+		<method name="space_flush_queries" experimental="">
+			<return type="void" />
+			<param index="0" name="space" type="RID" />
+			<description>
+				Runs the contact and area monitoring callbacks queued by [param space], so that the results of a manual [method space_step] become observable.
+				[b]Note:[/b] [param space] must not be active. The engine already flushes queries for active spaces every physics frame.
+			</description>
+		</method>
 		<method name="space_get_direct_state">
 			<return type="PhysicsDirectSpaceState2D" />
 			<param index="0" name="space" type="RID" />
 			<description>
 				Returns the state of a space, a [PhysicsDirectSpaceState2D]. This object can be used for collision/intersection queries.
+			</description>
+		</method>
+		<method name="space_get_last_process_info" experimental="">
+			<return type="int" />
+			<param index="0" name="space" type="RID" />
+			<param index="1" name="process_info" type="int" enum="PhysicsServer2D.ProcessInfo" />
+			<description>
+				Returns information about the current state of [param space]. See [enum ProcessInfo] for a list of available states.
 			</description>
 		</method>
 		<method name="space_get_param" qualifiers="const">
@@ -988,6 +1004,16 @@
 			<param index="2" name="value" type="float" />
 			<description>
 				Sets the value of the given space parameter.
+			</description>
+		</method>
+		<method name="space_step" experimental="">
+			<return type="void" />
+			<param index="0" name="space" type="RID" />
+			<param index="1" name="delta" type="float" />
+			<description>
+				Manually advances [param space] forward by [param delta] seconds. This can be used to fast-forward a simulation, as in rollback-style networking, or to predict an outcome, such as previewing the path of a ball in a billiards game.
+				[b]Note:[/b] [param space] must not be active. An active space is already advanced once per physics frame by the engine, so stepping it manually would advance it twice. Deactivate it with [method space_set_active] first.
+				[b]Note:[/b] Stepping does not run contact or area monitoring callbacks. Call [method space_flush_queries] afterwards if you need them.
 			</description>
 		</method>
 		<method name="world_boundary_shape_create">

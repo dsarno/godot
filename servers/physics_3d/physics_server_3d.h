@@ -90,6 +90,8 @@ public:
 	virtual RID space_create() = 0;
 	virtual void space_set_active(RID p_space, bool p_active) = 0;
 	virtual bool space_is_active(RID p_space) const = 0;
+	virtual void space_step(RID p_space, real_t p_delta) = 0;
+	virtual void space_flush_queries(RID p_space) = 0;
 
 	virtual void space_set_param(RID p_space, PS3DE::SpaceParameter p_param, real_t p_value) = 0;
 	virtual real_t space_get_param(RID p_space, PS3DE::SpaceParameter p_param) const = 0;
@@ -390,6 +392,7 @@ public:
 	virtual bool is_flushing_queries() const = 0;
 
 	virtual int get_process_info(PS3DE::ProcessInfo p_info) = 0;
+	virtual int space_get_last_process_info(RID p_space, PS3DE::ProcessInfo p_info) = 0;
 
 	PhysicsServer3D();
 	~PhysicsServer3D();

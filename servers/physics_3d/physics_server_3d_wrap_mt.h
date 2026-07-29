@@ -113,6 +113,8 @@ public:
 	FUNCRID(space);
 	FUNC2(space_set_active, RID, bool);
 	FUNC1RC(bool, space_is_active, RID);
+	FUNC2(space_step, RID, real_t);
+	FUNC1(space_flush_queries, RID);
 
 	FUNC3(space_set_param, RID, PS3DE::SpaceParameter, real_t);
 	FUNC2RC(real_t, space_get_param, RID, PS3DE::SpaceParameter);
@@ -412,6 +414,10 @@ public:
 
 	int get_process_info(PS3DE::ProcessInfo p_info) override {
 		return physics_server_3d->get_process_info(p_info);
+	}
+
+	int space_get_last_process_info(RID p_space, PS3DE::ProcessInfo p_info) override {
+		return physics_server_3d->space_get_last_process_info(p_space, p_info);
 	}
 
 	PhysicsServer3DWrapMT(PhysicsServer3D *p_contained, bool p_create_thread);
