@@ -30,12 +30,13 @@
 
 #pragma once
 
+#include "core/math/math_defs.h"
+#include "core/templates/span.h"
 #include "scene/3d/node_3d.h"
 #include "scene/resources/3d/mesh_library.h"
 
-// SQRT(3)/2; used both in the editor and the GridMap.  Due to the division, it
-// didn't fit the pattern of other Math::SQRTN defines, so I'm putting it here.
-#define SQRT3_2 0.8660254037844386
+// Ratio of a regular hexagon's apothem to its radius. Shared with the editor.
+inline constexpr double SQRT3_2 = Math::SQRT3 / 2;
 
 class NavigationMesh;
 class NavigationMeshSourceGeometryData3D;
@@ -185,7 +186,9 @@ private:
 
 	bool _in_tree = false;
 	CellShape cell_shape = CELL_SHAPE_SQUARE;
-	TypedArray<Basis> cell_orientations;
+	// Every orientation a cell of the current shape can be placed in. The index
+	// of an orientation in this list is what gets stored with each cell.
+	Span<const Basis> cell_orientations;
 	Vector3 cell_size = Vector3(2, 2, 2);
 	int octant_size = 8;
 	bool center_x = true;
@@ -340,12 +343,12 @@ public:
 	Basis get_cell_item_basis(const Vector3i &p_position) const;
 	Basis get_basis_with_orthogonal_index(int p_index) const;
 	int get_orthogonal_index_from_basis(const Basis &p_basis) const;
-	TypedArray<Vector3i> get_cell_neighbors(const Vector3i p_cell) const;
+	TypedArray<Vector3i> get_cell_neighbors(const Vector3i &p_cell) const;
 
 	Vector3i local_to_map(const Vector3 &p_local_position) const;
 	Vector3 map_to_local(const Vector3i &p_map_position) const;
 
-	TypedArray<Vector3i> local_region_to_map(Vector3 p_local_point_a, Vector3 p_local_point_b) const;
+	TypedArray<Vector3i> local_region_to_map(const Vector3 &p_local_point_a, const Vector3 &p_local_point_b) const;
 
 	void set_cell_scale(float p_scale);
 	float get_cell_scale() const;

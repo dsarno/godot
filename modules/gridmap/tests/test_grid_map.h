@@ -34,6 +34,7 @@
 
 #include "core/math/math_defs.h"
 #include "core/math/vector3i.h"
+#include "core/templates/pair.h"
 #include "scene/main/scene_tree.h"
 #include "scene/main/window.h"
 #include "scene/resources/3d/primitive_meshes.h"
@@ -394,6 +395,51 @@ TEST_CASE("[SceneTree][GridMap] get_cell_neighbors() hex cells") {
 		CHECK(cells.has(cell + Vector3i(0, 0, 1)));
 		CHECK(cells.has(cell + Vector3i(0, -1, 0)));
 		CHECK(cells.has(cell + Vector3i(0, 1, 0)));
+	}
+}
+
+TEST_CASE("[SceneTree][GridMap][MeshLibrary] baked meshes use the cell positions") {
+	Ref<BoxMesh> box_mesh;
+	box_mesh.instantiate();
+	box_mesh->set_size(Vector3(1.0, 1.0, 1.0));
+
+	Ref<MeshLibrary> mesh_library;
+	mesh_library.instantiate();
+	mesh_library->create_item(0);
+	mesh_library->set_item_mesh(0, box_mesh);
+
+	const Vector3i cell = Vector3i(1, 0, 1);
+
+	auto baked_mesh_center = [&](GridMap::CellShape p_shape) {
+		GridMap *grid_map = memnew(GridMap);
+		SceneTree::get_singleton()->get_root()->add_child(grid_map);
+		grid_map->set_cell_shape(p_shape);
+		grid_map->set_cell_size(Vector3(1.0, 1.0, 1.0));
+		grid_map->set_mesh_library(mesh_library);
+		grid_map->set_cell_item(cell, 0);
+		grid_map->make_baked_meshes();
+
+		Array baked = grid_map->get_bake_meshes();
+		REQUIRE(baked.size() == 2);
+		Ref<Mesh> mesh = baked[0];
+		REQUIRE(mesh.is_valid());
+		Vector3 center = mesh->get_aabb().get_center();
+		Vector3 expected = grid_map->map_to_local(cell);
+
+		SceneTree::get_singleton()->get_root()->remove_child(grid_map);
+		memdelete(grid_map);
+
+		return Pair<Vector3, Vector3>(center, expected);
+	};
+
+	SUBCASE("square cells") {
+		Pair<Vector3, Vector3> result = baked_mesh_center(GridMap::CELL_SHAPE_SQUARE);
+		CHECK(result.first.is_equal_approx(result.second));
+	}
+
+	SUBCASE("hexagonal cells") {
+		Pair<Vector3, Vector3> result = baked_mesh_center(GridMap::CELL_SHAPE_HEXAGON);
+		CHECK(result.first.is_equal_approx(result.second));
 	}
 }
 

@@ -263,7 +263,7 @@ void GridMapEditor::_update_selection() {
 	RenderingServer *rs = RS::get_singleton();
 
 	if (selection_multimesh_instance.is_valid()) {
-		rs->free(selection_multimesh_instance);
+		rs->free_rid(selection_multimesh_instance);
 	}
 	selection.cells.clear();
 	selection_multimesh_instance = RID();
@@ -272,11 +272,14 @@ void GridMapEditor::_update_selection() {
 		return;
 	}
 
-	// Scaling and translation for the center of the cell mesh.
+	// Scaling and translation for the center of the cell mesh. map_to_local()
+	// already applies half a cell on the axes that are centered, and hexagonal
+	// cells are always centered on X and Z.
+	const bool is_hex = node->get_cell_shape() == GridMap::CELL_SHAPE_HEXAGON;
 	Vector3 cell_center = Vector3(
-			node->get_center_x() ? 0 : node->get_cell_size().x / 2.0,
+			(is_hex || node->get_center_x()) ? 0 : node->get_cell_size().x / 2.0,
 			node->get_center_y() ? 0 : node->get_cell_size().y / 2.0,
-			node->get_center_z() ? 0 : node->get_cell_size().z / 2.0);
+			(is_hex || node->get_center_z()) ? 0 : node->get_cell_size().z / 2.0);
 	Transform3D cell_transform = Transform3D().scaled_local(node->get_cell_size()).translated(cell_center);
 
 	// We're using `local_region_to_map()` to get a selection of cells, and that
@@ -1050,8 +1053,8 @@ EditorPlugin::AfterGUIInput GridMapEditor::forward_spatial_input_event(Camera3D 
 			// Consume input to avoid conflicts with other plugins.
 			if (k.is_valid() && k->is_pressed() && !k->is_echo()) {
 				for (int i = 0; i < options->get_popup()->get_item_count(); ++i) {
-					const Ref<Shortcut> &shortcut = options->get_popup()->get_item_shortcut(i);
-					if (shortcut.is_valid() && shortcut->matches_event(p_event)) {
+					const Ref<Shortcut> &item_shortcut = options->get_popup()->get_item_shortcut(i);
+					if (item_shortcut.is_valid() && item_shortcut->matches_event(p_event)) {
 						accept_event();
 						_menu_option(options->get_popup()->get_item_id(i));
 						return EditorPlugin::AFTER_GUI_INPUT_STOP;
@@ -1750,11 +1753,11 @@ void GridMapEditor::_update_cell_shape(GridMap::CellShape p_cell_shape) {
 
 void GridMapEditor::_build_selection_meshes() {
 	if (selection_tile_mesh.is_valid()) {
-		RS::get_singleton()->free(selection_tile_mesh);
+		RS::get_singleton()->free_rid(selection_tile_mesh);
 		selection_tile_mesh = RID();
 	}
 	if (selection_multimesh.is_valid()) {
-		RS::get_singleton()->free(selection_multimesh);
+		RS::get_singleton()->free_rid(selection_multimesh);
 		selection_multimesh = RID();
 	}
 
@@ -2487,17 +2490,25 @@ GridMapEditor::~GridMapEditor() {
 
 	for (int i = 0; i < 3; i++) {
 		if (grid_mesh[i].is_valid()) {
-			RenderingServer::get_singleton()->free(grid_mesh[i]);
+			RenderingServer::get_singleton()->free_rid(grid_mesh[i]);
 		}
 		if (grid_instance[i].is_valid()) {
 			RenderingServer::get_singleton()->free_rid(grid_instance[i]);
 		}
 	}
+	RenderingServer::get_singleton()->free_rid(cursor_mesh);
+	if (cursor_instance.is_valid()) {
+		RenderingServer::get_singleton()->free_rid(cursor_instance);
+	}
+
+	if (selection_multimesh_instance.is_valid()) {
+		RenderingServer::get_singleton()->free_rid(selection_multimesh_instance);
+	}
 	if (selection_multimesh.is_valid()) {
-		RenderingServer::get_singleton()->free(selection_multimesh);
+		RenderingServer::get_singleton()->free_rid(selection_multimesh);
 	}
 	if (selection_tile_mesh.is_valid()) {
-		RenderingServer::get_singleton()->free(selection_tile_mesh);
+		RenderingServer::get_singleton()->free_rid(selection_tile_mesh);
 	}
 }
 
@@ -2579,7 +2590,10 @@ GridMap *GridMapEditorPlugin::get_current_grid_map() const {
 
 void GridMapEditorPlugin::set_selection(const Vector3i &p_begin, const Vector3i &p_end) {
 	ERR_FAIL_NULL(grid_map_editor);
-	grid_map_editor->_set_selection(true, p_begin, p_end);
+	ERR_FAIL_NULL(grid_map_editor->node);
+	grid_map_editor->_set_selection(true,
+			grid_map_editor->node->map_to_local(p_begin),
+			grid_map_editor->node->map_to_local(p_end));
 }
 
 void GridMapEditorPlugin::clear_selection() {

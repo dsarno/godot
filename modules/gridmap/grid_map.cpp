@@ -333,87 +333,83 @@ Ref<MeshLibrary> GridMap::get_mesh_library() const {
 	return mesh_library;
 }
 
+// Every orientation a square cell can be placed in: the 24 rotations of a cube.
+static const Basis _square_cell_orientations[24] = {
+	// Rotate the cube about the Z axis.
+	Basis(1, 0, 0, 0, 1, 0, 0, 0, 1),
+	Basis(0, -1, 0, 1, 0, 0, 0, 0, 1),
+	Basis(-1, 0, 0, 0, -1, 0, 0, 0, 1),
+	Basis(0, 1, 0, -1, 0, 0, 0, 0, 1),
+
+	// Rotate the cube 90 degrees about the X axis, then about Z.
+	Basis(1, 0, 0, 0, 0, -1, 0, 1, 0),
+	Basis(0, 0, 1, 1, 0, 0, 0, 1, 0),
+	Basis(-1, 0, 0, 0, 0, 1, 0, 1, 0),
+	Basis(0, 0, -1, -1, 0, 0, 0, 1, 0),
+
+	// Rotate the cube 180 degrees about the X axis, then about Z.
+	Basis(1, 0, 0, 0, -1, 0, 0, 0, -1),
+	Basis(0, 1, 0, 1, 0, 0, 0, 0, -1),
+	Basis(-1, 0, 0, 0, 1, 0, 0, 0, -1),
+	Basis(0, -1, 0, -1, 0, 0, 0, 0, -1),
+
+	// Rotate the cube -90 degrees about the X axis, then about Z.
+	Basis(1, 0, 0, 0, 0, 1, 0, -1, 0),
+	Basis(0, 0, -1, 1, 0, 0, 0, -1, 0),
+	Basis(-1, 0, 0, 0, 0, -1, 0, -1, 0),
+	Basis(0, 0, 1, -1, 0, 0, 0, -1, 0),
+
+	// Rotate the cube 90 degrees about the Y axis, then about Z.
+	Basis(0, 0, 1, 0, 1, 0, -1, 0, 0),
+	Basis(0, -1, 0, 0, 0, 1, -1, 0, 0),
+	Basis(0, 0, -1, 0, -1, 0, -1, 0, 0),
+	Basis(0, 1, 0, 0, 0, -1, -1, 0, 0),
+
+	// Rotate the cube -90 degrees about the Y axis, then about Z. The Z
+	// rotations of this group run 180, -90, 0, 90; changing the order would
+	// change the orientation of cells in existing projects.
+	Basis(0, 0, 1, 0, -1, 0, 1, 0, 0),
+	Basis(0, 1, 0, 0, 0, 1, 1, 0, 0),
+	Basis(0, 0, -1, 0, 1, 0, 1, 0, 0),
+	Basis(0, -1, 0, 0, 0, -1, 1, 0, 0),
+};
+
+// Every orientation a hexagonal cell can be placed in.
+static const Basis _hexagon_cell_orientations[12] = {
+	// Rotate the hexagon about the Y axis in 60 degree steps.
+	Basis(1, 0, 0, 0, 1, 0, 0, 0, 1),
+	Basis(0.5, 0, SQRT3_2, 0, 1, 0, -SQRT3_2, 0, 0.5),
+	Basis(-0.5, 0, SQRT3_2, 0, 1, 0, -SQRT3_2, 0, -0.5),
+	Basis(-1, 0, 0, 0, 1, 0, 0, 0, -1),
+	Basis(0.5, 0, -SQRT3_2, 0, 1, 0, SQRT3_2, 0, 0.5),
+	Basis(-0.5, 0, -SQRT3_2, 0, 1, 0, SQRT3_2, 0, -0.5),
+
+	// Flip the hexagon over (180 degrees about the X axis), then rotate about
+	// the Y axis in 60 degree steps.
+	Basis(1, 0, 0, 0, -1, 0, 0, 0, -1),
+	Basis(0.5, 0, -SQRT3_2, 0, -1, 0, -SQRT3_2, 0, -0.5),
+	Basis(-0.5, 0, -SQRT3_2, 0, -1, 0, -SQRT3_2, 0, 0.5),
+	Basis(-1, 0, 0, 0, -1, 0, 0, 0, 1),
+	Basis(-0.5, 0, SQRT3_2, 0, -1, 0, SQRT3_2, 0, 0.5),
+	Basis(0.5, 0, SQRT3_2, 0, -1, 0, SQRT3_2, 0, -0.5),
+};
+
 void GridMap::set_cell_shape(CellShape p_shape) {
-	// Update the cell orientation array based on cell shape.  This array
-	// contains all possible orientations for cells.  The index of a particular
-	// orientation within the array is stored with each cell assignment.
-	switch (p_shape) {
-		case CELL_SHAPE_SQUARE:
-			cell_orientations.clear();
+	ERR_FAIL_INDEX(p_shape, CELL_SHAPE_MAX);
 
-			// rotate cube about the Z-axis
-			cell_orientations.push_back(Basis(1, 0, 0, 0, 1, 0, 0, 0, 1));
-			cell_orientations.push_back(Basis(0, -1, 0, 1, 0, 0, 0, 0, 1));
-			cell_orientations.push_back(Basis(-1, 0, 0, 0, -1, 0, 0, 0, 1));
-			cell_orientations.push_back(Basis(0, 1, 0, -1, 0, 0, 0, 0, 1));
-
-			// rotate cube about the X-axis 90 degrees, then rotate about Z
-			cell_orientations.push_back(Basis(1, 0, 0, 0, 0, -1, 0, 1, 0));
-			cell_orientations.push_back(Basis(0, 0, 1, 1, 0, 0, 0, 1, 0));
-			cell_orientations.push_back(Basis(-1, 0, 0, 0, 0, 1, 0, 1, 0));
-			cell_orientations.push_back(Basis(0, 0, -1, -1, 0, 0, 0, 1, 0));
-
-			// rotate cube about the X-axis 180 degrees, then rotate about Z
-			cell_orientations.push_back(Basis(1, 0, 0, 0, -1, 0, 0, 0, -1));
-			cell_orientations.push_back(Basis(0, 1, 0, 1, 0, 0, 0, 0, -1));
-			cell_orientations.push_back(Basis(-1, 0, 0, 0, 1, 0, 0, 0, -1));
-			cell_orientations.push_back(Basis(0, -1, 0, -1, 0, 0, 0, 0, -1));
-
-			// rotate cube about the X-axis -90 degrees, then rotate about Z
-			cell_orientations.push_back(Basis(1, 0, 0, 0, 0, 1, 0, -1, 0));
-			cell_orientations.push_back(Basis(0, 0, -1, 1, 0, 0, 0, -1, 0));
-			cell_orientations.push_back(Basis(-1, 0, 0, 0, 0, -1, 0, -1, 0));
-			cell_orientations.push_back(Basis(0, 0, 1, -1, 0, 0, 0, -1, 0));
-
-			// rotate Y-axis 90 degrees, then rotate about Z
-			cell_orientations.push_back(Basis(0, 0, 1, 0, 1, 0, -1, 0, 0));
-			cell_orientations.push_back(Basis(0, -1, 0, 0, 0, 1, -1, 0, 0));
-			cell_orientations.push_back(Basis(0, 0, -1, 0, -1, 0, -1, 0, 0));
-			cell_orientations.push_back(Basis(0, 1, 0, 0, 0, -1, -1, 0, 0));
-
-			// rotate Y-axis -90 degrees, then rotate about Z.
-			// Note, the Z-rotation on this set is not the same as the previous
-			// groups above.  Instead the Z-rotation order appears to be
-			// 180, -90, 0, 90.  I'm not changing this order because it would
-			// change the rotation of tiles in existing projects.
-			cell_orientations.push_back(Basis(0, 0, 1, 0, -1, 0, 1, 0, 0));
-			cell_orientations.push_back(Basis(0, 1, 0, 0, 0, 1, 1, 0, 0));
-			cell_orientations.push_back(Basis(0, 0, -1, 0, 1, 0, 1, 0, 0));
-			cell_orientations.push_back(Basis(0, -1, 0, 0, 0, -1, 1, 0, 0));
-			break;
-		case CELL_SHAPE_HEXAGON:
-			cell_orientations.clear();
-
-			// Rotate 60 degrees about the Y-axis
-			cell_orientations.push_back(Basis(1, 0, 0, 0, 1, 0, 0, 0, 1));
-			cell_orientations.push_back(Basis(0.5, 0, SQRT3_2, 0, 1, 0, -SQRT3_2, 0, 0.5));
-			cell_orientations.push_back(Basis(-0.5, 0, SQRT3_2, 0, 1, 0, -SQRT3_2, 0, -0.5));
-			cell_orientations.push_back(Basis(-1, 0, 0, 0, 1, 0, 0, 0, -1));
-			cell_orientations.push_back(Basis(0.5, 0, -SQRT3_2, 0, 1, 0, SQRT3_2, 0, 0.5));
-			cell_orientations.push_back(Basis(-0.5, 0, -SQRT3_2, 0, 1, 0, SQRT3_2, 0, -0.5));
-
-			// Flip the tile over (rotate x-axis 180 degrees), then rotate about
-			// Y-axis in 60 degree increments.
-			cell_orientations.push_back(Basis(1, 0, 0, 0, -1, 0, 0, 0, -1));
-			cell_orientations.push_back(Basis(0.5, 0, -SQRT3_2, 0, -1, 0, -SQRT3_2, 0, -0.5));
-			cell_orientations.push_back(Basis(-0.5, 0, -SQRT3_2, 0, -1, 0, -SQRT3_2, 0, 0.5));
-			cell_orientations.push_back(Basis(-1, 0, 0, 0, -1, 0, 0, 0, 1));
-			cell_orientations.push_back(Basis(-0.5, 0, SQRT3_2, 0, -1, 0, SQRT3_2, 0, 0.5));
-			cell_orientations.push_back(Basis(0.5, 0, SQRT3_2, 0, -1, 0, SQRT3_2, 0, -0.5));
-			break;
-		default:
-			ERR_PRINT_ED("unsupported cell shape");
-			return;
-	}
-
-	cell_shape = p_shape;
-
-	// Hex cells only support a cell radius stored in cell_shape.x.  Copy the
-	// X value into Z if we're using hex-shaped cells.  This is done to make
-	// the editor UI consistent when changing cell size.
-	if (cell_shape == CELL_SHAPE_HEXAGON) {
+	if (p_shape == CELL_SHAPE_HEXAGON) {
+		cell_orientations = Span<const Basis>(_hexagon_cell_orientations);
+		// Hexagonal cells are regular, so only the radius in cell_size.x is
+		// used. Mirror it into cell_size.z to keep the editor UI consistent.
 		cell_size.z = cell_size.x;
+	} else {
+		cell_orientations = Span<const Basis>(_square_cell_orientations);
 	}
+
+	if (cell_shape == p_shape) {
+		return;
+	}
+	cell_shape = p_shape;
 
 	notify_property_list_changed();
 	_recreate_octant_data();
@@ -427,9 +423,8 @@ GridMap::CellShape GridMap::get_cell_shape() const {
 void GridMap::set_cell_size(const Vector3 &p_size) {
 	ERR_FAIL_COND(p_size.x < 0.001 || p_size.y < 0.001 || p_size.z < 0.001);
 	cell_size = p_size;
-	// hex cells have a radius stored in x, and height stored in y.  To make
-	// it clear that irregular hexagons are not supported, the z value of hex
-	// cells will always be updated to be the same as x.
+	// Hexagonal cells are regular; cell_size.x is their radius and cell_size.y
+	// their height. cell_size.z is kept equal to the radius.
 	if (cell_shape == CELL_SHAPE_HEXAGON) {
 		cell_size.z = cell_size.x;
 	}
@@ -740,8 +735,8 @@ Basis GridMap::get_cell_item_basis(const Vector3i &p_position) const {
 }
 
 Basis GridMap::get_basis_with_orthogonal_index(int p_index) const {
-	ERR_FAIL_INDEX_V(p_index, cell_orientations.size(), Basis());
-	return cell_orientations.get(p_index);
+	ERR_FAIL_INDEX_V(p_index, (int)cell_orientations.size(), Basis());
+	return cell_orientations[p_index];
 }
 
 // for hex cells, round a value within a Basis to -sqrt(3)/2, 0.0, sqrt(3)/2
@@ -785,7 +780,7 @@ int GridMap::get_orthogonal_index_from_basis(const Basis &p_basis) const {
 				orth[i][j] = v;
 			}
 		}
-		for (int i = 0; i < cell_orientations.size(); i++) {
+		for (uint32_t i = 0; i < cell_orientations.size(); i++) {
 			if (cell_orientations[i] == orth) {
 				return i;
 			}
@@ -803,7 +798,7 @@ int GridMap::get_orthogonal_index_from_basis(const Basis &p_basis) const {
 		orth[2][1] = 0;
 		orth[2][2] = round_one_or_half(orth[2][2]);
 
-		for (int i = 0; i < cell_orientations.size(); i++) {
+		for (uint32_t i = 0; i < cell_orientations.size(); i++) {
 			if (cell_orientations[i] == orth) {
 				return i;
 			}
@@ -813,47 +808,39 @@ int GridMap::get_orthogonal_index_from_basis(const Basis &p_basis) const {
 	return 0;
 }
 
-TypedArray<Vector3i> GridMap::get_cell_neighbors(const Vector3i cell) const {
+TypedArray<Vector3i> GridMap::get_cell_neighbors(const Vector3i &p_cell) const {
 	TypedArray<Vector3i> out;
-	switch (cell_shape) {
-		case CELL_SHAPE_SQUARE:
-			out.push_back(cell + Vector3(1, 0, 0));
-			out.push_back(cell + Vector3(-1, 0, 0));
-			out.push_back(cell + Vector3(0, 1, 0));
-			out.push_back(cell + Vector3(0, -1, 0));
-			out.push_back(cell + Vector3(0, 0, 1));
-			out.push_back(cell + Vector3(0, 0, -1));
-			break;
-		case CELL_SHAPE_HEXAGON:
-			// each of the six horizontal directions
-			out.push_back(cell + Vector3(1, 0, 0));
-			out.push_back(cell + Vector3(1, 0, -1));
-			out.push_back(cell + Vector3(0, 0, -1));
-			out.push_back(cell + Vector3(-1, 0, 0));
-			out.push_back(cell + Vector3(-1, 0, 1));
-			out.push_back(cell + Vector3(0, 0, 1));
-			// and up and down
-			out.push_back(cell + Vector3(0, 1, 0));
-			out.push_back(cell + Vector3(0, -1, 0));
-			break;
-		default:
-			ERR_PRINT_ED("unsupported cell shape");
+	if (cell_shape == CELL_SHAPE_HEXAGON) {
+		// The six horizontal directions in axial coordinates.
+		out.push_back(p_cell + Vector3i(1, 0, 0));
+		out.push_back(p_cell + Vector3i(1, 0, -1));
+		out.push_back(p_cell + Vector3i(0, 0, -1));
+		out.push_back(p_cell + Vector3i(-1, 0, 0));
+		out.push_back(p_cell + Vector3i(-1, 0, 1));
+		out.push_back(p_cell + Vector3i(0, 0, 1));
+	} else {
+		out.push_back(p_cell + Vector3i(1, 0, 0));
+		out.push_back(p_cell + Vector3i(-1, 0, 0));
+		out.push_back(p_cell + Vector3i(0, 0, 1));
+		out.push_back(p_cell + Vector3i(0, 0, -1));
 	}
+	out.push_back(p_cell + Vector3i(0, 1, 0));
+	out.push_back(p_cell + Vector3i(0, -1, 0));
 	return out;
 }
 
 // based on blog post https://observablehq.com/@jrus/hexround
 static inline Vector2i axial_round(real_t q_in, real_t r_in) {
-	int q = round(q_in);
-	int r = round(r_in);
+	int q = Math::round(q_in);
+	int r = Math::round(r_in);
 
 	real_t q_rem = q_in - q;
 	real_t r_rem = r_in - r;
 
-	if (abs(q_rem) >= abs(r_rem)) {
-		q += round(0.5 * r_rem + q_rem);
+	if (Math::abs(q_rem) >= Math::abs(r_rem)) {
+		q += Math::round(0.5 * r_rem + q_rem);
 	} else {
-		r += round(0.5 * q_rem + r_rem);
+		r += Math::round(0.5 * q_rem + r_rem);
 	}
 
 	return Vector2i(q, r);
@@ -912,7 +899,7 @@ Vector3i GridMap::local_to_map(const Vector3 &p_local_position) const {
 	// map index for hex cells using (q, r) axial coordinates for the cell are:
 	// (q, level, r).  We do it this way as q and r best map to x and z
 	// respectively.
-	return Vector3i(hex.x, floor(p_local_position.y / cell_size.y), hex.y);
+	return Vector3i(hex.x, Math::floor(p_local_position.y / cell_size.y), hex.y);
 }
 
 Vector3 GridMap::map_to_local(const Vector3i &p_map_position) const {
@@ -934,11 +921,12 @@ Vector3 GridMap::map_to_local(const Vector3i &p_map_position) const {
 	return local;
 }
 
-TypedArray<Vector3i> GridMap::local_region_to_map(Vector3 p_a, Vector3 p_b) const {
+TypedArray<Vector3i> GridMap::local_region_to_map(const Vector3 &p_local_point_a, const Vector3 &p_local_point_b) const {
 	TypedArray<Vector3i> out;
 
-	// shuffle the fields of a & b around so that a is bottom-left, b is
-	// top-right
+	// Sort the corners so that a is the bottom-left one and b the top-right.
+	Vector3 p_a = p_local_point_a;
+	Vector3 p_b = p_local_point_b;
 	if (p_a.x > p_b.x) {
 		SWAP(p_a.x, p_b.x);
 	}
@@ -1151,11 +1139,10 @@ bool GridMap::_octant_update(const OctantKey &p_key) {
 			continue;
 		}
 
-		Vector3 map_pos = Vector3(E.x, E.y, E.z);
 		Transform3D xform;
 
-		xform.basis = cell_orientations.get(c.rot);
-		xform.set_origin(map_to_local(map_pos));
+		xform.basis = cell_orientations[c.rot];
+		xform.set_origin(map_to_local(Vector3i(E.x, E.y, E.z)));
 		xform.basis.scale(Vector3(cell_scale, cell_scale, cell_scale));
 		if (baked_meshes.is_empty()) {
 			if (mesh_library->get_item_mesh(c.item).is_valid()) {
@@ -2066,13 +2053,10 @@ Array GridMap::get_meshes() const {
 
 		IndexKey ik = E.key;
 
-		Vector3 cellpos = map_to_local(Vector3(ik.x, ik.y, ik.z));
-
 		Transform3D xform;
 
-		xform.basis = cell_orientations.get(E.value.rot);
-
-		xform.set_origin(cellpos);
+		xform.basis = cell_orientations[E.value.rot];
+		xform.set_origin(map_to_local(Vector3i(ik.x, ik.y, ik.z)));
 		xform.basis.scale(Vector3(cell_scale, cell_scale, cell_scale));
 
 		meshes.push_back(xform * mesh_library->get_item_mesh_transform(id));
@@ -2120,13 +2104,10 @@ void GridMap::make_baked_meshes(bool p_gen_lightmap_uv, float p_lightmap_uv_texe
 			continue;
 		}
 
-		Vector3 cellpos = Vector3(key.x, key.y, key.z);
-		Vector3 ofs = _get_offset();
-
 		Transform3D xform;
 
-		xform.basis = cell_orientations.get(E.value.rot);
-		xform.set_origin(cellpos * cell_size + ofs);
+		xform.basis = cell_orientations[E.value.rot];
+		xform.set_origin(map_to_local(Vector3i(key.x, key.y, key.z)));
 		xform.basis.scale(Vector3(cell_scale, cell_scale, cell_scale));
 
 		const OctantKey ok = get_octant_key_from_index_key(key);
@@ -2217,7 +2198,7 @@ bool GridMap::get_debug_show_octants() const {
 
 GridMap::GridMap() {
 	set_notify_transform(true);
-	set_cell_shape(CELL_SHAPE_SQUARE);
+	cell_orientations = Span<const Basis>(_square_cell_orientations);
 #if defined(DEBUG_ENABLED) && !defined(NAVIGATION_3D_DISABLED)
 	NavigationServer3D::get_singleton()->connect("map_changed", callable_mp(this, &GridMap::_navigation_map_changed));
 	NavigationServer3D::get_singleton()->connect("navigation_debug_changed", callable_mp(this, &GridMap::_update_navigation_debug_edge_connections));
