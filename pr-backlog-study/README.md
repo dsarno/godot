@@ -112,10 +112,38 @@ Result: **9 test cases / 250 assertions passing**, revert-proofed (reverting the
 fails 2 cases / 17 assertions), clang-format clean, `--doctool` zero diff. Verified independently
 by re-running the suite and inspecting the fixes rather than taking the agent's word for it.
 
-**What legs 1 and 3 have in common** is the useful signal: in both cases the *rebase* was routine
-and the *value* was in the review. Five defects in one, six-plus in the other, in code that humans
-had already reviewed. The stale-PR backlog is not just a queue of work to redo — it is a corpus of
-partially-reviewed code with real bugs still in it.
+**Leg 4 — shared hash-table core and a new `AHashSet`.** 3,420 commits of drift, 36 source commits.
+Cost: **224k tokens, 114 tool calls, ~24 minutes of build time.** Four defects fixed, including a
+vestigial `virtual` destructor left over from a CRTP conversion that made every `AHashMap` and
+`AHashSet` polymorphic and grew `sizeof(AHashMap<int,int>)` from 24 to 32 bytes engine-wide.
+Two of the four were found by mechanically diffing the new container's API against `HashSet`'s.
+
+Three further defects were found and **deliberately not fixed** — a heap-use-after-free on
+self-aliasing insert (ASAN trace captured), `reserve()` able to shrink capacity, and capacity
+overflow above 2^31 — because all three reproduce against the pre-refactor header and belong in
+their own change. Correct scoping is as much a quality signal as the fixes.
+
+Two things from this leg generalise:
+
+**The tests had never been compiled.** `tests/SCsub` globs `*/**/*.cpp`; the new test file was named
+`.h`. Its 263 lines of assertions had never been built or run, and renaming it exposed a latent
+compile error immediately. A green CI badge on that branch would have meant nothing. *Verify that
+the tests actually execute* belongs on the gate list above, ahead of "the tests pass."
+
+**The benchmark contradicted the change's own premise, and was reported anyway.** New versus
+pre-refactor `AHashMap` came out within ±2% on every operation at N=10⁶ — the extraction is
+performance-*neutral*, which is correct for a deduplication. The large wins in the numbers
+(~1.6× insert, ~6× iteration over `HashMap`) predate the change entirely. An agent optimising to
+look good reports the second comparison and omits the first.
+
+**What all three completed legs have in common** is the useful signal: the *rebase* was routine in
+every case, and the *value* was in the review. Five defects, six-plus, and four — all in code humans
+had already reviewed, some of it for years. The stale-PR backlog is not merely a queue of work to
+redo; it is a corpus of partially-reviewed code with real bugs still sitting in it.
+
+Token cost per hard PR: **275k, 331k, 224k** — call it ~275k for the hard tier. Since two-thirds of
+the backlog changes fewer than 100 lines, the 200k blended default in the model is if anything
+conservative for the median PR and low for the tail.
 
 ---
 
@@ -204,10 +232,16 @@ quality is in the harness, not the model.
 
 Recommended gates, in the order they pay off:
 1. It must compile, and the full test suite must pass.
-2. Every claimed bug fix must have a test that fails without the fix. Demonstrate it.
-3. Style and doc consistency checks (`clang-format`, `--doctool` zero-diff) — cheap and catch real breakage.
-4. An independent reviewer agent that did not write the change, prompted to refute rather than confirm.
-5. Human sampling — not every PR, but every PR in a subsystem the agent has not been audited on yet.
+2. **Confirm the tests actually run.** One leg's change shipped 263 lines of assertions that the
+   build never compiled, because the file extension didn't match the glob. "Tests pass" and "tests
+   exist" are different claims, and only one of them is cheap to fake by accident.
+3. Every claimed bug fix must have a test that fails without the fix. Demonstrate the failure.
+4. Style and doc consistency checks (`clang-format`, `--doctool` zero-diff) — cheap, and they catch
+   real breakage rather than cosmetics.
+5. Where a change claims a performance win, benchmark it against the thing it claims to beat, and
+   report the result even when it disagrees with the premise.
+6. An independent reviewer agent that did not write the change, prompted to refute rather than confirm.
+7. Human sampling — not every PR, but every PR in a subsystem the agent has not been audited on yet.
 
 ---
 
