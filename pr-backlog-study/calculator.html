@@ -126,12 +126,13 @@
   <p class="eyebrow">Feasibility model · measured 2026-07-29</p>
   <h1>Clearing 5,236 Godot pull requests with agents</h1>
   <p class="sub">Every default below is measured, not guessed — diff sizes from 119 real PR heads,
-  token costs from a completed pilot, build times from this machine. Change any assumption and
-  watch which constraint actually binds.</p>
+  token costs from the API's own billing fields across 1,224 calls, build times from this machine.
+  Tokens are counted the way you are actually charged: context is resent on every call, so a single
+  pull request bills tens of millions. Change any assumption and watch which constraint binds.</p>
 </header>
 
 <div class="readout">
-  <div class="cell"><div class="k">Tokens processed</div><div class="v acc" id="oTok">—</div><div class="n" id="oTokN">—</div></div>
+  <div class="cell"><div class="k">Billed tokens</div><div class="v acc" id="oTok">—</div><div class="n" id="oTokN">—</div></div>
   <div class="cell"><div class="k">Model spend</div><div class="v cst" id="oCost">—</div><div class="n" id="oCostN">—</div></div>
   <div class="cell"><div class="k">Agent wall-clock</div><div class="v" id="oWall">—</div><div class="n" id="oWallN">—</div></div>
   <div class="cell"><div class="k">Binding constraint</div><div class="v wrn" id="oBind" style="font-size:19px">—</div><div class="n" id="oBindN">—</div></div>
@@ -160,20 +161,23 @@
 
     <div class="card">
       <h2>Tokens per PR</h2>
-      <label class="row"><span class="lbl">Triage <b id="lTa">25k</b></span>
-        <input type="range" id="Ta" min="2" max="120" step="1" value="25"></label>
-      <label class="row"><span class="lbl">Deep review <b id="lTb">70k</b></span>
-        <input type="range" id="Tb" min="10" max="300" step="5" value="70">
-        <span class="hint">Pilot measured 58k and 78k for two real deep reviews.</span></label>
-      <label class="row"><span class="lbl">Rebase · fix · test <b id="lTc">200k</b></span>
-        <input type="range" id="Tc" min="20" max="900" step="10" value="200">
-        <span class="hint">Pilot leg 1 total was ~275k including its share of shortlisting.</span></label>
-      <label class="row"><span class="lbl">Output share of tokens <b id="lOut">20%</b></span>
-        <input type="range" id="Out" min="5" max="60" step="1" value="20">
-        <span class="hint">Output is priced 2–5× input, so this drives cost more than volume does.</span></label>
-      <label class="row"><span class="lbl">Cache hit rate on input <b id="lCache">60%</b></span>
-        <input type="range" id="Cache" min="0" max="95" step="1" value="60">
-        <span class="hint">The engine tree and system prompt repeat across every PR.</span></label>
+      <label class="row"><span class="lbl">Triage <b id="lTa">0.2M</b></span>
+        <input type="range" id="Ta" min="1" max="60" step="1" value="2">
+        <span class="hint">Shortlisting 10 candidates cost 1.9M billed, so ~0.19M each.</span></label>
+      <label class="row"><span class="lbl">Deep review <b id="lTb">2.0M</b></span>
+        <input type="range" id="Tb" min="1" max="150" step="1" value="20">
+        <span class="hint">Two real deep reviews billed 1.25M and 2.79M.</span></label>
+      <label class="row"><span class="lbl">Rebase · fix · test <b id="lTc">35.0M</b></span>
+        <input type="range" id="Tc" min="10" max="1000" step="5" value="350">
+        <span class="hint">Two completed legs billed 25.0M and 44.2M end to end.</span></label>
+      <label class="row"><span class="lbl">Output share <b id="lOut">0.2%</b></span>
+        <input type="range" id="Out" min="1" max="200" step="1" value="2">
+        <span class="hint">Measured at 0.24%. Output is priced 50–100× a cache read, but there is
+        so little of it that cache reads still dominate.</span></label>
+      <label class="row"><span class="lbl">Cache hit rate on input <b id="lCache">96%</b></span>
+        <input type="range" id="Cache" min="0" max="99" step="1" value="96">
+        <span class="hint">Measured at 96.2% across 1,224 API calls. The remainder is billed at the
+        cache-<em>write</em> rate, which is above the normal input rate on Anthropic models.</span></label>
     </div>
 
     <div class="card">
@@ -205,7 +209,7 @@
       <h2>Model spend <span class="tag" id="modelTag">select a row</span></h2>
       <div class="tblwrap">
         <table>
-          <thead><tr><th>Model</th><th>In $/M</th><th>Out $/M</th><th>Total spend</th><th>Per PR</th></tr></thead>
+          <thead><tr><th>Model</th><th>Cache rd $/M</th><th>Out $/M</th><th>Total spend</th><th>Per PR</th></tr></thead>
           <tbody id="modelRows"></tbody>
         </table>
       </div>
@@ -227,7 +231,9 @@
 </div>
 
 <footer>
-  <strong>Method.</strong> Backlog counts are live from GitHub search. Diff-size statistics come from
+  <strong>Method.</strong> Token figures are the API's own <code>usage</code> fields — output,
+  cache-write, cache-read and fresh input — summed over 1,224 calls in the session that produced
+  this study, not estimates of "content processed". Backlog counts are live from GitHub search. Diff-size statistics come from
   119 open PR heads fetched and diffed locally against their own merge-base. Token figures per stage
   are anchored on one completed pilot leg — a stale physics-server change, 3,696 commits behind master,
   14 files conflicting — carried through rebase, review, defect fixes, new tests, and a
@@ -238,22 +244,24 @@
 </div>
 
 <script>
+// c = cache-read price, w = cache-write price. Anthropic bills writes at 1.25x input
+// (5-min TTL); open-weight vendors bill them at the normal input rate.
 const MODELS=[
-  {n:"DeepSeek V4 Flash",  i:0.14,  o:0.28,  c:0.0028},
-  {n:"MiniMax M2.7",       i:0.30,  o:1.20,  c:0.030},
-  {n:"DeepSeek V4 Pro",    i:0.435, o:0.87,  c:0.003625},
-  {n:"Kimi K2 (0711)",     i:0.55,  o:2.20,  c:0.055},
-  {n:"Kimi K2.6",          i:0.95,  o:4.00,  c:0.095},
-  {n:"GLM-5.2",            i:1.20,  o:4.30,  c:0.120},
-  {n:"Claude Sonnet 5",    i:3.00,  o:15.00, c:0.300},
-  {n:"Claude Opus 5",      i:5.00,  o:25.00, c:0.500},
-  {n:"Claude Fable 5",     i:10.00, o:50.00, c:1.000},
+  {n:"DeepSeek V4 Flash",  i:0.14,  o:0.28,  c:0.0028,   w:0.14},
+  {n:"MiniMax M2.7",       i:0.30,  o:1.20,  c:0.030,    w:0.30},
+  {n:"DeepSeek V4 Pro",    i:0.435, o:0.87,  c:0.003625, w:0.435},
+  {n:"Kimi K2 (0711)",     i:0.55,  o:2.20,  c:0.055,    w:0.55},
+  {n:"Kimi K2.6",          i:0.95,  o:4.00,  c:0.095,    w:0.95},
+  {n:"GLM-5.2",            i:1.20,  o:4.30,  c:0.120,    w:1.20},
+  {n:"Claude Sonnet 5",    i:3.00,  o:15.00, c:0.300,    w:3.75},
+  {n:"Claude Opus 5",      i:5.00,  o:25.00, c:0.500,    w:6.25},
+  {n:"Claude Fable 5",     i:10.00, o:50.00, c:1.000,    w:12.50},
 ];
 const PRESETS={
-  triage:{Fc:35,Fr:100,Ta:25,Tb:70,Tc:200,Min:8,Bi:0,Hm:2},
-  full:  {Fc:35,Fr:25,Ta:25,Tb:70,Tc:200,Min:45,Bi:3,Hm:10},
-  steady:{N:400,Fc:20,Fr:20,Ta:25,Tb:70,Tc:200,Min:45,Bi:3,Hm:10},
-  cheap: {Fc:55,Fr:40,Ta:12,Tb:40,Tc:120,Min:25,Bi:2,Hm:5},
+  triage:{Fc:35,Fr:100,Ta:2,Tb:20,Tc:350,Min:8,Bi:0,Hm:2},
+  full:  {Fc:35,Fr:25,Ta:2,Tb:20,Tc:350,Min:45,Bi:3,Hm:10},
+  steady:{N:400,Fc:20,Fr:20,Ta:2,Tb:20,Tc:350,Min:45,Bi:3,Hm:10},
+  cheap: {Fc:55,Fr:40,Ta:1,Tb:12,Tc:180,Min:25,Bi:2,Hm:5},
 };
 let selModel=0;
 const $=id=>document.getElementById(id);
@@ -272,13 +280,13 @@ const dur=h=>{
 function compute(){
   const N=val("N"), fc=val("Fc")/100, fr=val("Fr")/100;
   const nTriage=N, nReview=N*(1-fc), nBuild=nReview*(1-fr);
-  const tA=nTriage*val("Ta")*1000, tB=nReview*val("Tb")*1000, tC=nBuild*val("Tc")*1000;
+  const tA=nTriage*val("Ta")*1e5, tB=nReview*val("Tb")*1e5, tC=nBuild*val("Tc")*1e5;
   const total=tA+tB+tC;
-  const outShare=val("Out")/100, cache=val("Cache")/100;
-  const outTok=total*outShare, inTok=total-outShare*total;
-  const inCached=inTok*cache, inFresh=inTok-inCached;
+  const outShare=val("Out")/1000, cache=val("Cache")/100;
+  const outTok=total*outShare, inTok=total-outTok;
+  const inCached=inTok*cache, inWrite=inTok-inCached;
 
-  const costs=MODELS.map(m=>(inFresh*m.i + inCached*m.c + outTok*m.o)/1e6);
+  const costs=MODELS.map(m=>(inWrite*m.w + inCached*m.c + outTok*m.o)/1e6);
 
   // agent time: triage+review are cheap, full treatment dominates
   const agentH=(nTriage*(val("Min")*0.15) + nReview*(val("Min")*0.3) + nBuild*val("Min"))/60;
@@ -287,7 +295,7 @@ function compute(){
   const humanH=nBuild*val("Hm")/60;
   const humanWeeks=humanH/Math.max(1,val("Hw"));
 
-  return {N,nTriage,nReview,nBuild,tA,tB,tC,total,outTok,inCached,inFresh,
+  return {N,nTriage,nReview,nBuild,tA,tB,tC,total,outTok,inCached,inWrite,
           costs,agentH,wallH,buildH,humanH,humanWeeks};
 }
 
@@ -295,8 +303,9 @@ function render(){
   IDS.forEach(id=>{
     const v=val(id), e=$("l"+id); if(!e) return;
     e.textContent = (id==="N")?v
-      : ["Fc","Fr","Out","Cache"].includes(id)? v+"%"
-      : ["Ta","Tb","Tc"].includes(id)? v+"k" : v;
+      : id==="Out"? (v/10).toFixed(1)+"%"
+      : ["Fc","Fr","Cache"].includes(id)? v+"%"
+      : ["Ta","Tb","Tc"].includes(id)? (v/10).toFixed(1)+"M" : v;
   });
   const r=compute();
 
@@ -324,7 +333,7 @@ function render(){
   // models
   $("modelRows").innerHTML=MODELS.map((m,i)=>
     `<tr class="${i===selModel?'sel':''}" data-i="${i}" tabindex="0">
-      <td>${m.n}</td><td>${m.i.toFixed(2)}</td><td>${m.o.toFixed(2)}</td>
+      <td>${m.n}</td><td>${m.c < 0.01 ? m.c.toFixed(4) : m.c.toFixed(3)}</td><td>${m.o.toFixed(2)}</td>
       <td>${money(r.costs[i])}</td><td>${money(r.costs[i]/Math.max(1,r.N))}</td></tr>`).join("");
   $("modelTag").textContent=MODELS[selModel].n;
 

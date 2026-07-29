@@ -8,11 +8,19 @@ estimated from priors. Where something is an estimate, it says so.
 ## The short answer
 
 Compute is not the problem. **Model spend to process the entire 5,236-PR backlog is roughly
-$90 on the cheapest capable open-weight model and about $6,000 on Claude Opus 5** — for ~880M
-tokens of work. Agent wall-clock is under three days at 50-way concurrency. Builds are
+$860 on the cheapest capable open-weight model and about $76,000 on Claude Opus 5** — for
+~97 billion billed tokens. Agent wall-clock is under three days at 50-way concurrency. Builds are
 ~640 machine-hours, which is free on GitHub-hosted runners for a public repo.
 
-The binding constraint is the **human audit gate**. At ten minutes of human review per finished
+**A note on how tokens are counted here, because it is a factor of ~100.** These are *billed*
+tokens, taken from the API's own usage fields over 1,224 calls — not an estimate of "content
+processed". An agent resends its entire context on every call, so a pull request whose unique
+material is ~300k tokens bills **25–44M**. The measured shape of that spend: **96.2% of input is
+cache reads**, mean context per call **243k tokens**, and **output is 0.24% of the total**. The
+number that governs cost is therefore the *cache-read* rate, not the headline input rate — which
+reorders the model table below. Full breakdown in `token-log.md`.
+
+The binding constraint is still the **human audit gate**. At ten minutes of human review per finished
 PR, ~2,550 finished PRs is ~425 person-hours — about **ten months at ten hours a week**, roughly
 110× the agent time. Every dollar saved by picking a cheaper model is a dollar you were not short of.
 
@@ -174,26 +182,30 @@ Default scenario: 35% closed at triage, 25% of the remainder rejected or sent ba
 reimplementation, ~2,550 PRs carried through to a tested branch. 880M tokens, 20% output,
 60% cache hit rate.
 
-| model | total spend | per PR |
-|---|---|---|
-| DeepSeek V4 Flash | **$90** | $0.02 |
-| MiniMax M2.7 | $308 | $0.06 |
-| Kimi K2.6 | $1,011 | $0.19 |
-| GLM-5.2 | $1,145 | $0.22 |
-| Claude Sonnet 5 | $3,610 | $0.69 |
-| Claude Opus 5 | $6,017 | $1.15 |
-| Claude Fable 5 | $12,034 | $2.30 |
+| model | cache read $/M | total spend | per PR |
+|---|---|---|---|
+| DeepSeek V4 Flash | 0.0028 | **$858** | $0.16 |
+| DeepSeek V4 Pro | 0.0036 | $2,194 | $0.42 |
+| MiniMax M2.7 | 0.030 | $4,191 | $0.80 |
+| Kimi K2.6 | 0.095 | $13,310 | $2.54 |
+| GLM-5.2 | 0.120 | $16,666 | $3.18 |
+| Claude Sonnet 5 | 0.300 | $45,401 | $8.67 |
+| Claude Opus 5 | 0.500 | $75,669 | $14.45 |
+| Claude Fable 5 | 1.000 | $151,338 | $28.90 |
 
-The spread from cheapest to most expensive is 130×, and the absolute numbers are all small
-relative to the human time involved. **Model choice should be made on defect-catch rate, not
+Ranked by cache-read price, since that is 96% of the bill. The spread from cheapest to most
+expensive is ~175×, and at the open-weight end the absolute numbers are still small **Model choice should be made on defect-catch rate, not
 price.** Spending $6,000 instead of $90 to find one more state-corruption bug is obviously
 correct; spending $90 and shipping a silent rendering regression into a fork you then have to
 debug is not a saving.
 
-An honest caveat: the token-per-stage figures are anchored on one completed leg plus two
-measured deep reviews. Subagent costs are exact (58k and 78k for two deep reviews; 51k for
-shortlisting); the main-thread rebase/review/test figure of ~200k per hard PR is an estimate
-from tool-call volume. Easy PRs will be far cheaper — the interactive model lets you vary it.
+An honest caveat, and a correction. An earlier draft of this study put the total at 880M tokens
+and $6,017 on Opus 5. That was wrong by about 100× on volume and 12× on cost, because it counted
+unique content rather than billed tokens. The figures above are measured: 1.05B for triage, 6.8B
+for deep review, 89.3B for full treatment, from per-stage costs of 0.19M / 1.25–2.79M / 25.0–44.2M
+billed tokens respectively. Those per-stage numbers come from the hard tier; two-thirds of the
+backlog changes fewer than 100 lines and will be materially cheaper, which the interactive model
+lets you vary.
 
 ---
 
@@ -285,8 +297,9 @@ through the full UTF-32 validation path with no `reserve()`.
 **This is the better investment.** Per token it produced more defensible value than PR processing,
 and it has no human-throughput ceiling baked in: findings can be queued and triaged at whatever
 rate suits, they do not depend on a stranger's three-year-old patch, and each one is independently
-verifiable. Godot has on the order of 30–40 comparable subsystems; at ~200k tokens each that is
-roughly 8M tokens — **under $1 on a cheap model, about $50 on Opus 5** — for a first full sweep.
+verifiable. The `core/string` sweep billed **7.2M tokens**. Godot has on the order of 30–40 comparable
+subsystems, so a first full pass is roughly **250M billed tokens — about $2 on DeepSeek V4 Flash,
+$190 on Opus 5.**
 Full findings in `audit-core-string.md`.
 
 ## The upstream wall
@@ -339,4 +352,5 @@ no upstream cooperation.
 
 - `measurements.md` — every raw number, with how it was obtained
 - `audit-core-string.md` — 29 findings from the subsystem audit, ranked, with file:line
+- `token-log.md` — the measured token spend for this session, per component, priced across 8 models
 - `calculator.html` — interactive model; vary any assumption and see which constraint binds
