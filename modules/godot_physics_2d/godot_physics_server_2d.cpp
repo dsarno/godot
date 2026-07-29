@@ -247,11 +247,11 @@ bool GodotPhysicsServer2D::space_is_active(RID p_space) const {
 void GodotPhysicsServer2D::space_step(RID p_space, real_t p_delta) {
 	GodotSpace2D *space = space_owner.get_or_null(p_space);
 	ERR_FAIL_NULL(space);
-	ERR_FAIL_COND_MSG(active_spaces.has(space), "A activate godot space can't be stepped manually.");
+	ERR_FAIL_COND_MSG(active_spaces.has(space), "An active space can't be stepped manually. Deactivate it with space_set_active() first.");
 
-	// May be let pending_shape_update_list as a member of GodotSpaces3D and update shapes by themselves.
-	// To avoid effecting Spaces which are handled by developer (for lockstep/rollback netcode, it is particularly sensitive).
-	// Otherwise, call _update_shapes() directly.
+	// Only drain the pending shape updates that belong to this space, rather than calling
+	// _update_shapes(), so that stepping one space never mutates another. Manually stepped
+	// spaces are typically used for lockstep/rollback simulation, where that isolation matters.
 	SelfList<GodotCollisionObject2D> *collision_object_self = pending_shape_update_list.first();
 	while (collision_object_self) {
 		if (collision_object_self->self()->get_space() == space) {
@@ -270,16 +270,20 @@ void GodotPhysicsServer2D::space_step(RID p_space, real_t p_delta) {
 }
 
 void GodotPhysicsServer2D::space_flush_queries(RID p_space) {
-	// Like _update_shapes(), to provide controllability for developers, flushing_queries flag should active as a member of space and check it for each space.
-	// But I'm not sure about that, I am not familiar with multi-threads and the architecture of GodotPhysics.
-	flushing_queries = true;
-
 	GodotSpace2D *space = space_owner.get_or_null(p_space);
 	ERR_FAIL_NULL(space);
-	ERR_FAIL_COND_MSG(active_spaces.has(space), "A activate godot space should not flush queries manually.");
+	ERR_FAIL_COND_MSG(active_spaces.has(space), "An active space should not flush queries manually. Deactivate it with space_set_active() first.");
+
+	// Validate before raising the flag: an early return with it still set would leave the
+	// server permanently "flushing", silently disabling the guards that read
+	// is_flushing_queries() (e.g. Area2D::set_monitorable). Save and restore rather than
+	// forcing false, so a nested flush from inside a physics callback can't clear the outer one.
+	const bool was_flushing_queries = flushing_queries;
+	flushing_queries = true;
+
 	space->call_queries();
 
-	flushing_queries = false;
+	flushing_queries = was_flushing_queries;
 }
 
 void GodotPhysicsServer2D::space_set_param(RID p_space, PS2DE::SpaceParameter p_param, real_t p_value) {
@@ -1426,18 +1430,18 @@ int GodotPhysicsServer2D::get_process_info(PS2DE::ProcessInfo p_info) {
 	return 0;
 }
 
-int GodotPhysicsServer2D::space_get_last_process_info(RID p_space, ProcessInfo p_info) {
+int GodotPhysicsServer2D::space_get_last_process_info(RID p_space, PS2DE::ProcessInfo p_info) {
 	GodotSpace2D *space = space_owner.get_or_null(p_space);
 	ERR_FAIL_NULL_V(space, 0);
 
 	switch (p_info) {
-		case INFO_ACTIVE_OBJECTS: {
+		case PS2DE::INFO_ACTIVE_OBJECTS: {
 			return space->get_active_objects();
 		} break;
-		case INFO_COLLISION_PAIRS: {
+		case PS2DE::INFO_COLLISION_PAIRS: {
 			return space->get_collision_pairs();
 		} break;
-		case INFO_ISLAND_COUNT: {
+		case PS2DE::INFO_ISLAND_COUNT: {
 			return space->get_island_count();
 		} break;
 	}

@@ -218,18 +218,32 @@ void JoltPhysicsServer3D::space_step(RID p_space, real_t p_delta) {
 	JoltSpace3D *space = space_owner.get_or_null(p_space);
 	ERR_FAIL_NULL(space);
 	ERR_FAIL_COND(space->is_stepping());
+	// Match GodotPhysics: an active space is already advanced by step(), so stepping it
+	// again here would double-advance the simulation.
+	ERR_FAIL_COND_MSG(active_spaces.has(space), "An active space can't be stepped manually. Deactivate it with space_set_active() first.");
 
-	space->step(p_delta);
+	// Bracket with the job system exactly as step() does, otherwise repeated manual steps
+	// exhaust Jolt's job allocator ("maximum number of jobs exceeded").
+	job_system->pre_step();
+
+	space->step((float)p_delta);
+
+	job_system->post_step();
 }
 
 void JoltPhysicsServer3D::space_flush_queries(RID p_space) {
-	flushing_queries = true;
-
 	JoltSpace3D *space = space_owner.get_or_null(p_space);
 	ERR_FAIL_NULL(space);
+	ERR_FAIL_COND_MSG(active_spaces.has(space), "An active space should not flush queries manually. Deactivate it with space_set_active() first.");
+
+	// Validate before raising the flag, and restore rather than force false, so an early
+	// return or a nested flush cannot leave the server stuck in the flushing state.
+	const bool was_flushing_queries = flushing_queries;
+	flushing_queries = true;
+
 	space->call_queries();
 
-	flushing_queries = false;
+	flushing_queries = was_flushing_queries;
 }
 
 void JoltPhysicsServer3D::space_set_param(RID p_space, PS3DE::SpaceParameter p_param, real_t p_value) {
@@ -1706,7 +1720,7 @@ int JoltPhysicsServer3D::get_process_info(PS3DE::ProcessInfo p_process_info) {
 	return 0;
 }
 
-int JoltPhysicsServer3D::space_get_last_process_info(RID p_space, ProcessInfo p_info) {
+int JoltPhysicsServer3D::space_get_last_process_info(RID p_space, PS3DE::ProcessInfo p_info) {
 	return 0;
 }
 

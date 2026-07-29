@@ -955,7 +955,8 @@
 			<return type="void" />
 			<param index="0" name="space" type="RID" />
 			<description>
-				Flushes [param space]'s queries. It is necessary to call this method after calling [method space_step] with an active space from [code]_physics_process[/code]. Otherwise, call this method before calling [method space_step].
+				Runs the contact and area monitoring callbacks queued by [param space], so that the results of a manual [method space_step] become observable.
+				[b]Note:[/b] [param space] must not be active. The engine already flushes queries for active spaces every physics frame.
 			</description>
 		</method>
 		<method name="space_get_direct_state">
@@ -1010,8 +1011,9 @@
 			<param index="0" name="space" type="RID" />
 			<param index="1" name="delta" type="float" />
 			<description>
-				Manually advance [param space] forward in [param delta]. This technique can be used for speeding up physics simulations, as seen in advanced rollback-style networking, or for predicting outcomes in scenarios such as hitting a ball in a billiards game.
-				[b]Note:[/b] If call this method with an active [param space] from [code]_physics_process()[/code], you should call [method space_flush_queries] afterwards. Otherwise, call [method space_flush_queries] beforehand.
+				Manually advances [param space] forward by [param delta] seconds. This can be used to fast-forward a simulation, as in rollback-style networking, or to predict an outcome, such as previewing the path of a ball in a billiards game.
+				[b]Note:[/b] [param space] must not be active. An active space is already advanced once per physics frame by the engine, so stepping it manually would advance it twice. Deactivate it with [method space_set_active] first.
+				[b]Note:[/b] Stepping does not run contact or area monitoring callbacks. Call [method space_flush_queries] afterwards if you need them.
 			</description>
 		</method>
 		<method name="world_boundary_shape_create">
