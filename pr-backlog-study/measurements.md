@@ -1,0 +1,117 @@
+# Pilot measurements — 2026-07-29
+
+## A. Backlog shape (measured, n=119 diffs computed locally from real PR heads)
+
+Sample: 119 open PRs drawn stride-wise from the 800 newest open PRs; diff computed against
+`git merge-base <pr-head> upstream/master`.
+
+| metric | mean | median | p75 | p90 | p99 | max |
+|---|---|---|---|---|---|---|
+| changed lines (+/−) | 553 | **28** | 152 | 569 | 2,208 | 47,119 |
+| files touched | 7.1 | **2** | 5 | 16 | 77 | 249 |
+| diff bytes | 40,323 | **3,767** | 12,584 | 41,283 | 141,818 | 3,267,571 |
+| commits | 2.5 | 1 | 1 | 3 | 24 | 91 |
+
+Size buckets, extrapolated to the full 5,236:
+
+| bucket | share | count |
+|---|---|---|
+| trivial (<10 lines) | 28.6% | ~1,496 |
+| small (10–99) | 38.7% | ~2,024 |
+| medium (100–499) | 21.0% | ~1,100 |
+| large (500–1,999) | 10.1% | ~528 |
+| huge (≥2,000) | 1.7% | ~88 |
+
+**Total raw diff corpus ≈ 211 MB ≈ 59M tokens.** The diffs are not the cost driver.
+
+## B. Backlog age profile (measured via search `total_count` per window — population counts, not sample)
+
+| created | count | cumulative | cum % |
+|---|---|---|---|
+| <2020 | 6 | 6 | 0.1% |
+| 2020 | 51 | 57 | 1.1% |
+| 2021 | 156 | 213 | 4.1% |
+| 2022 | 307 | 520 | 9.9% |
+| 2023 | 571 | 1,091 | 20.8% |
+| 2024 | 949 | 2,040 | 39.0% |
+| 2025 | 1,599 | 3,639 | 69.5% |
+| 2026 (to 04-17) | 793 | 4,432 | 84.6% |
+| 2026 (04-18 →) | ~804 | 5,236 | 100% |
+
+Half the backlog is <18 months old; only 4% predates 2022. Drafts ≈ 7.5–14%.
+Label mix (newest 800): enhancement 452, bug 338, topic:editor 288, topic:gui 99,
+usability 94, topic:core 75, topic:3d 75, topic:rendering 66, documentation 54.
+
+## C. Human throughput baseline (measured from git history)
+
+- 4,339 merge commits in 12 months → **~362 merged PRs/month**
+- 655 unique authors/yr, but **~2 people perform essentially all merges**
+- Inflow ≈ outflow → backlog is a standing wave
+
+## D. Pilot leg 1 — physics manual space stepping (HARD tier), completed
+
+Selected as one of 3 from a 10-candidate shortlist produced by a research agent that
+git-tested mergeability of every candidate against current master.
+
+| quantity | measured |
+|---|---|
+| upstream diff as fetched | 32,208 bytes ≈ 8,900 tokens |
+| merge-base drift | 3,696 commits behind |
+| files conflicting on rebase | **14 of 22** |
+| root cause of conflicts | upstream moved physics enums into `PhysicsServer{2,3}DEnums` namespaces |
+| final branch | 3 commits, 23 files, +592 lines |
+| **real defects found** | **5** (1 state-corruption bug, 1 resource-exhaustion bug, 1 cross-backend inconsistency, 1 doc-contradicts-code, 1 compile/style breakage) |
+| tests written | 8 cases / 29 assertions, new file |
+| revert-proof performed | yes — test fails on unfixed code, passes with fix |
+| build: cold | **12 min 07 s** (4 cores, SCU, ccache cold) |
+| build: incremental | **98 s**, then 32 s / 23 s on later iterations (ccache warm) |
+| build iterations needed | 4 (1 compile error, 1 revert-proof, 1 restore, 1 final) |
+| local gates passed | clang-format clean; `--doctool` zero diff; 11/11 tests pass |
+
+**Agent token cost, leg 1.** Exactly measured for delegated work; estimated for main thread.
+
+| component | tokens | basis |
+|---|---|---|
+| candidate shortlisting (amortised over 3 PRs) | 51,180 / 3 ≈ 17,060 | exact (subagent) |
+| deep research on this PR | 58,487 | exact (subagent) |
+| main-thread rebase + review + fixes + tests + verification | ~200,000 | estimated from ~50 tool calls with build/test output |
+| **total** | **~275,000** | |
+
+## E. Pilot leg selection finding — the triage said "don't"
+
+The second candidate (a core scene-tree lifecycle feature) was researched at a cost of
+**78,170 tokens** and the correct output was a recommendation **not to rebase it**:
+- 9 concrete defects found, incl. state corruption and a silent rendering bug
+- 5 of its 16 touched files no longer exist at those paths upstream
+- blocked on an architectural objection from the lead architect that was never retracted
+- verdict: "best treated as a specification to reimplement rather than a diff to rebase"
+
+This is a real and important cost-model input: **a correct triage outcome is often "close it"
+or "reimplement", and reaching that verdict costs ~80k tokens of genuine analysis.** It is
+not a failure mode; it is the product.
+
+## F. Infrastructure findings
+
+- **Fork CI does not run.** All 9 Godot workflows are present and `state: active` on the fork,
+  but GitHub disables Actions on forked repos until the owner enables them; the only run in
+  the fork's history is a Copilot review from May. `workflow_dispatch` via API returns
+  `403 Resource not accessible by integration`. **Verification in this pilot was entirely local.**
+- Local build box: 4 cores / 15 GB RAM. Cold full editor build w/ tests = 12 min; ccache-warm
+  incremental = 23–98 s. ccache is what makes multi-branch work affordable.
+- Godot's own CI matrix is 7 jobs incl. ASan/UBSan/TSan, mono, doubles, 4 desktop + mobile +
+  web platforms. Reproducing that per PR is the dominant compute cost at scale, not tokens.
+
+## G. Governance finding (decisive for the upstream path)
+
+`godotengine/godot-contributing-docs` → `pull_requests/pull_request_guidelines.rst`:
+
+> "The use of AI to contribute to Godot is discouraged, and contributions made entirely by AI
+> are prohibited."
+
+Plus a disclosure requirement for any AI use, and: "Please only submit code that you understand
+and are prepared to explain to a maintainer." Effective ~2026-06-30.
+
+Press framed this as a flat ban; the actual text is narrower (discouraged / entirely-AI prohibited /
+disclosure mandatory). Either way the operative constraint on the upstream path is a **human who
+understands and can defend each change** — which is exactly the bottleneck the exercise set out
+to relieve.

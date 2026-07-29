@@ -1,0 +1,234 @@
+# Clearing the Godot PR backlog with agents — a feasibility study
+
+**Date of measurement: 2026-07-29.** Every number here was measured during the study, not
+estimated from priors. Where something is an estimate, it says so.
+
+---
+
+## The short answer
+
+Compute is not the problem. **Model spend to process the entire 5,236-PR backlog is roughly
+$90 on the cheapest capable open-weight model and about $6,000 on Claude Opus 5** — for ~880M
+tokens of work. Agent wall-clock is under three days at 50-way concurrency. Builds are
+~640 machine-hours, which is free on GitHub-hosted runners for a public repo.
+
+The binding constraint is the **human audit gate**. At ten minutes of human review per finished
+PR, ~2,550 finished PRs is ~425 person-hours — about **ten months at ten hours a week**, roughly
+110× the agent time. Every dollar saved by picking a cheaper model is a dollar you were not short of.
+
+There is also a wall on the upstream path that no amount of engineering removes: as of
+2026-06-30 Godot's contribution rules state that *"the use of AI to contribute to Godot is
+discouraged, and contributions made entirely by AI are prohibited,"* with mandatory disclosure
+for any AI use. Working on the fork is the only compliant venue for autonomous agent work.
+
+---
+
+## What was actually done
+
+Not a thought experiment. One pilot leg was carried end to end on the fork, and the numbers
+below come from it.
+
+**Setup.** The fork's `master` was 3.5 months stale; it was fast-forwarded to upstream
+`d488d1111`. A full Godot editor build with tests was made to work on a 4-core box:
+**12 min cold, 23–98 s incremental** with ccache. That build is what makes any of this real —
+without the ability to compile and run the engine, an agent is just rewriting text.
+
+**Candidate selection.** A research agent shortlisted 10 substantial open PRs, and — importantly —
+tested each one's mergeability with `git merge-tree` against current master rather than trusting
+GitHub's cached flag. Three were selected for the pilot, all "big and serious": substantial
+engine changes with real design discussion behind them.
+
+**Leg 1 — manual physics space stepping.** Adds `space_step()`, `space_flush_queries()` and
+`space_get_last_process_info()` to `PhysicsServer2D/3D` for rollback-netcode and prediction use
+cases. Merge-base was **3,696 commits** behind master; **14 of 22 files conflicted**, because
+upstream had since moved the physics enums into `PhysicsServer{2,3}DEnums` namespaces. Rebased,
+conflicts resolved onto the current API, reviewed, fixed, tested, pushed, PR opened.
+
+**Five real defects were found in code that had been sitting in review for three years:**
+
+1. **State-corruption bug.** `flushing_queries = true` was set *before* argument validation, so an
+   invalid RID returned early with the flag still raised — leaving the server permanently in the
+   "flushing" state and silently disabling every guard that reads `is_flushing_queries()`,
+   including `Area2D::set_monitorable`. Fixed by validating first and save/restoring rather than
+   forcing the flag false, so a nested flush can't clear the outer one.
+2. **Resource exhaustion.** The Jolt backend's `space_step()` didn't bracket with
+   `job_system->pre_step()/post_step()` the way its own `step()` does, so repeated manual steps
+   ran Jolt out of job slots.
+3. **Cross-backend inconsistency.** The GodotPhysics backends rejected stepping an active space;
+   Jolt silently allowed it, double-advancing the simulation.
+4. **Documentation contradicting the code.** The class reference described stepping an active
+   space from `_physics_process()` as *the supported workflow* — which all three backends reject.
+5. **Compile and style breakage** surfaced by the rebase: `ProcessInfo` needed namespace
+   qualification under the current enum API, and two `GDVIRTUAL_BIND` lines were missing
+   semicolons (196 of 198 in those files had them).
+
+**Verification.** A new test file, 8 cases / 29 assertions, all passing. The important part is the
+proof that the tests are worth anything: with the fix reverted, the regression test **fails** —
+
+```
+ERROR: CHECK( !server.is_flushing_queries() ) is NOT correct!
+  values: CHECK( false )
+```
+
+— and passes once restored. Also verified locally: `clang-format` clean, and `--doctool`
+regenerates the class reference with **zero diff**, so the docs match the bindings.
+
+A wrinkle worth knowing: the test harness installs the *dummy* physics servers, so the real
+backends are unreachable through `PhysicsServer3DManager`. The tests construct
+`GodotPhysicsServer2D/3D` directly instead. An agent that had not checked would have written
+tests that passed against a no-op server and proved nothing.
+
+**Leg 2 — the triage said "don't".** The second candidate (a core scene-tree `active` lifecycle
+feature) was researched at a cost of 78k tokens, and the correct output was a recommendation
+**not to rebase it**: 9 concrete defects including state corruption and a silent rendering bug;
+5 of its 16 touched files no longer exist at those paths upstream; and it is blocked on an
+architectural objection from the lead architect that was never retracted. Verdict: *"best treated
+as a specification to reimplement rather than a diff to rebase."*
+
+That is not a failed leg. **A correct "close this" or "reimplement this" verdict is the product**,
+and reaching it costs real analysis. Any cost model that assumes every PR gets rebased is wrong.
+
+---
+
+## The backlog, measured
+
+119 open PRs were fetched by head SHA and diffed locally against their own merge-base.
+
+| | mean | median | p90 | p99 | max |
+|---|---|---|---|---|---|
+| changed lines | 553 | **28** | 569 | 2,208 | 47,119 |
+| files touched | 7.1 | **2** | 16 | 77 | 249 |
+| diff bytes | 40,323 | **3,767** | 41,283 | 141,818 | 3,267,571 |
+
+The median PR is **28 lines across 2 files**. Two-thirds are under 100 lines. The entire diff
+corpus for all 5,236 PRs is about **211 MB ≈ 59M tokens** — the diffs are emphatically *not* the
+cost driver. What costs tokens is the surrounding context an agent must read to judge a change,
+and the build-test-fix loop.
+
+**Age profile** (population counts, not a sample): half the backlog is under 18 months old; only
+4% predates 2022. This is a standing wave, not a swamp — humans merge ~362 PRs/month and inflow
+roughly matches it. Two people perform essentially all merges.
+
+---
+
+## Where the money goes
+
+Default scenario: 35% closed at triage, 25% of the remainder rejected or sent back for
+reimplementation, ~2,550 PRs carried through to a tested branch. 880M tokens, 20% output,
+60% cache hit rate.
+
+| model | total spend | per PR |
+|---|---|---|
+| DeepSeek V4 Flash | **$90** | $0.02 |
+| MiniMax M2.7 | $308 | $0.06 |
+| Kimi K2.6 | $1,011 | $0.19 |
+| GLM-5.2 | $1,145 | $0.22 |
+| Claude Sonnet 5 | $3,610 | $0.69 |
+| Claude Opus 5 | $6,017 | $1.15 |
+| Claude Fable 5 | $12,034 | $2.30 |
+
+The spread from cheapest to most expensive is 130×, and the absolute numbers are all small
+relative to the human time involved. **Model choice should be made on defect-catch rate, not
+price.** Spending $6,000 instead of $90 to find one more state-corruption bug is obviously
+correct; spending $90 and shipping a silent rendering regression into a fork you then have to
+debug is not a saving.
+
+An honest caveat: the token-per-stage figures are anchored on one completed leg plus two
+measured deep reviews. Subagent costs are exact (58k and 78k for two deep reviews; 51k for
+shortlisting); the main-thread rebase/review/test figure of ~200k per hard PR is an estimate
+from tool-call volume. Easy PRs will be far cheaper — the interactive model lets you vary it.
+
+---
+
+## What actually binds
+
+| phase | work | elapsed |
+|---|---|---|
+| agent work | 3,269 agent-hours | **2.7 days** at 50 concurrent |
+| builds & tests | 638 build-hours | ~13 hours parallelised |
+| human audit | 425 person-hours | **~10 months** at 10 h/week |
+
+The human gate is ~110× everything else. Three consequences:
+
+1. **Raising the close-at-triage rate is the highest-leverage lever**, because it removes PRs
+   from the human queue entirely. Moving 35% → 55% cuts the human gate by nearly a third.
+2. **Batching by subsystem beats batching by age.** A reviewer who has just loaded the physics
+   server into their head can audit six physics PRs far faster than six unrelated ones.
+3. **Agent thoroughness is nearly free, human thoroughness is not.** Spend tokens generously on
+   verification, adversarial review, and revert-proofs — anything that lets a human accept a
+   change in two minutes instead of twenty pays for itself ~100×.
+
+---
+
+## Does the quality hold up?
+
+On the evidence of one hard leg: yes, but only with the gates in place.
+
+What worked: the agent found five genuine defects in three-year-old reviewed code, including one
+that would have wedged the physics server; it correctly refused to mechanically rebase a PR that
+needed reimplementation; it noticed the test harness was running a dummy server and would have
+produced meaningless tests; and it proved its own regression test by reverting the fix.
+
+What that depended on: **a working build**, a real test suite, and a revert-proof discipline. Take
+any of those away and the same agent produces confident, plausible, unverified changes. The
+quality is in the harness, not the model.
+
+Recommended gates, in the order they pay off:
+1. It must compile, and the full test suite must pass.
+2. Every claimed bug fix must have a test that fails without the fix. Demonstrate it.
+3. Style and doc consistency checks (`clang-format`, `--doctool` zero-diff) — cheap and catch real breakage.
+4. An independent reviewer agent that did not write the change, prompted to refute rather than confirm.
+5. Human sampling — not every PR, but every PR in a subsystem the agent has not been audited on yet.
+
+---
+
+## The upstream wall
+
+The value produced here cannot simply be pushed upstream. Godot's rules, effective ~2026-06-30:
+
+> "The use of AI to contribute to Godot is discouraged, and contributions made entirely by AI are prohibited."
+
+Plus mandatory disclosure of any AI use, and: *"Please only submit code that you understand and
+are prepared to explain to a maintainer."* Press coverage framed this as a flat ban; the actual
+text is narrower — discouraged in general, prohibited only when a contribution is *entirely* AI,
+disclosure always. But the operative constraint is a human who understands and can defend each
+change, which is precisely the bottleneck the exercise set out to relieve.
+
+Practical consequence: the fork is the venue. If any of this work is ever offered upstream it has
+to go one PR at a time, through a human who has genuinely read it, with AI use disclosed — and
+that person's throughput, not the agents', sets the rate.
+
+One infrastructure note: the fork's CI **does not run**. All 9 Godot workflows are present and
+active, but GitHub disables Actions on forks until the owner enables them, and `workflow_dispatch`
+via API returns `403`. All verification in this pilot was local. Enabling Actions on the fork is
+the single highest-value setup step for scaling this, since it replaces a 4-core box with
+Godot's full 7-platform matrix including ASan/UBSan/TSan.
+
+---
+
+## Recommendation
+
+**Do it, on the fork, in this order:**
+
+1. **Enable GitHub Actions on the fork.** Everything else is gated on being able to verify at scale.
+2. **Run a triage-only pass first** (~$25 on a cheap model, a few days). Output: a ranked
+   dashboard of what is obsolete, what is a clean rebase, what needs reimplementation, and what
+   is genuinely valuable. This is the cheapest thing in the whole project and it is what tells
+   you whether the rest is worth doing.
+3. **Pick one subsystem** and run the full pipeline on it — 30–50 PRs, batched so a human audits
+   them in one sitting. Measure the human minutes per PR for real; that single number determines
+   the project's duration more than everything else combined.
+4. **Then scale**, with model choice set by measured defect-catch rate on that subsystem rather
+   than by list price.
+
+The continuous-audit workstream (finding existing problems, not just processing PRs) is likely
+the better long-term investment. It has no human-throughput ceiling built into it — findings can
+be queued and triaged at whatever rate suits — and it does not depend on the quality of a
+three-year-old stranger's patch.
+
+---
+
+## Files
+
+- `measurements.md` — every raw number, with how it was obtained
+- Interactive model — vary any assumption and see which constraint binds
