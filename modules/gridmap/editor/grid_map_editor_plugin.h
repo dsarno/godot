@@ -119,33 +119,45 @@ class GridMapEditor : public EditorDock {
 	LocalVector<SetItem> set_items;
 
 	GridMap *node = nullptr;
+	// caching the node global transform to detect when the node has been
+	// moved/scaled/rotated.
+	Transform3D node_global_transform;
 	Ref<MeshLibrary> mesh_library = nullptr;
 
-	Transform3D grid_xform;
-	Transform3D edit_grid_xform;
-	Vector3::Axis edit_axis_select = Vector3::AXIS_Y;
-	int edit_floor[3];
+	// Plane the cells are edited on. Its distance from the origin comes from edit_floor.
+	Plane edit_plane;
+
+	// Square cells are edited on the X, Y and Z planes. Hexagonal cells replace
+	// the Z plane with the three planes of the axial coordinate system.
+	enum EditAxis {
+		AXIS_X = 0,
+		AXIS_Y,
+		AXIS_Z,
+		AXIS_Q, // Runs northwest to southeast.
+		AXIS_R, // Runs east to west; the hexagonal equivalent of AXIS_Z.
+		AXIS_S, // Runs southwest to northeast.
+		AXIS_MAX,
+	};
+	EditAxis edit_axis_select = AXIS_Y;
+	int edit_floor[AXIS_MAX];
 	int edit_main_vp = 0;
-	Vector3 grid_ofs;
 
 	bool allow_viewport_override = true;
 	Viewport *last_viewport = nullptr;
-	Vector3::Axis viewport_axis = edit_axis_select;
+	EditAxis viewport_axis = edit_axis_select;
 
-	RID grid[3];
+	RID active_grid_instance;
+	RID grid_mesh[3];
 	RID grid_instance[3];
 	RID cursor_mesh;
 	RID cursor_instance;
-	RID selection_mesh;
-	RID selection_instance;
-	RID selection_level_mesh[3];
-	RID selection_level_instance[3];
-	RID paste_mesh;
-	RID paste_instance;
 
 	struct ClipboardItem {
 		int cell_item = 0;
-		Vector3 grid_offset;
+		// Cell the item was copied from; needed to restore a pending move.
+		Vector3i source_cell;
+		// Position of the item in local space, relative to the clipboard center.
+		Vector3 position;
 		int orientation = 0;
 		RID instance;
 	};
@@ -161,34 +173,28 @@ class GridMapEditor : public EditorDock {
 	Ref<StandardMaterial3D> cursor_outer_mat;
 	Ref<StandardMaterial3D> inner_mat;
 	Ref<StandardMaterial3D> outer_mat;
-	Ref<StandardMaterial3D> selection_floor_mat;
 
 	bool updating = false;
 
 	struct Selection {
-		Vector3 click;
-		Vector3 current;
 		Vector3 begin;
 		Vector3 end;
 		bool active = false;
+		Vector<Vector3i> cells;
 	} selection;
 	Selection last_selection;
+	RID selection_tile_mesh;
+	RID selection_multimesh;
+	RID selection_multimesh_instance;
 
-	struct PasteIndicator {
-		Vector3 click;
-		Vector3 current;
-		Vector3 begin;
-		Vector3 end;
-		Vector3 distance_from_cursor;
-		int orientation = 0;
-	};
-	PasteIndicator paste_indicator;
+	// orientation of the paste indicator; uses orientation from GridMap
+	int paste_orientation = 0;
 
 	bool cursor_visible = false;
 	Transform3D cursor_transform;
 
-	Vector3 cursor_origin;
-	Vector3i cursor_gridpos;
+	// cell index for the pointer
+	Vector3i pointer_cell;
 
 	int display_mode = DISPLAY_THUMBNAIL;
 	int selected_palette = -1;
@@ -201,6 +207,11 @@ class GridMapEditor : public EditorDock {
 		MENU_OPTION_X_AXIS,
 		MENU_OPTION_Y_AXIS,
 		MENU_OPTION_Z_AXIS,
+		MENU_OPTION_Q_AXIS,
+		MENU_OPTION_R_AXIS,
+		MENU_OPTION_S_AXIS,
+		MENU_OPTION_ROTATE_AXIS_CW,
+		MENU_OPTION_ROTATE_AXIS_CCW,
 		MENU_OPTION_VIEWPORT_OVERRIDE,
 		MENU_OPTION_CURSOR_ROTATE_Y,
 		MENU_OPTION_CURSOR_ROTATE_X,
@@ -229,7 +240,13 @@ class GridMapEditor : public EditorDock {
 	Label *info_message = nullptr;
 
 	void update_grid(); // Change which and where the grid is displayed.
-	void _draw_grids(const Vector3 &cell_size);
+	void _draw_hex_grid(RID p_mesh, const Vector3 &p_cell_size);
+	void _draw_hex_r_axis_grid(RID p_mesh, const Vector3 &p_cell_size);
+	void _draw_plane_grid(RID p_mesh, const Vector3 &p_axis_n1, const Vector3 &p_axis_n2, const Vector3 &p_cell_size);
+	void _draw_grids(const Vector3 &p_cell_size);
+	void _update_cell_shape(GridMap::CellShape p_cell_shape);
+	void _update_options_menu();
+	void _build_selection_meshes();
 	void _menu_option(int);
 	void update_palette();
 	void _update_resource_preview(const String &p_path, const Ref<Texture2D> &p_preview, const Ref<Texture2D> &p_small_preview, int p_idx);
@@ -252,8 +269,7 @@ class GridMapEditor : public EditorDock {
 	void _do_paste();
 	void _cancel_pending_move();
 	void _show_viewports_transform_gizmo(bool p_value);
-	void _update_selection_transform();
-	void _validate_selection();
+	void _update_selection();
 	void _set_selection(bool p_active, const Vector3 &p_begin = Vector3(), const Vector3 &p_end = Vector3());
 	AABB _get_selection() const;
 	bool _has_selection() const;
@@ -261,7 +277,7 @@ class GridMapEditor : public EditorDock {
 
 	void _update_edit_axis();
 	Vector3::Axis _get_facing_axis(const Basis &p_grid_basis, const Vector3 &p_direction) const;
-	Vector3::Axis _get_edit_axis() const { return allow_viewport_override ? viewport_axis : edit_axis_select; }
+	EditAxis _get_edit_axis() const { return allow_viewport_override ? viewport_axis : edit_axis_select; }
 
 	void _view_state_changed(Node3DEditorViewport *p_viewport);
 
