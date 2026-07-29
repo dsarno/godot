@@ -88,6 +88,35 @@ as a specification to reimplement rather than a diff to rebase."*
 That is not a failed leg. **A correct "close this" or "reimplement this" verdict is the product**,
 and reaching it costs real analysis. Any cost model that assumes every PR gets rebased is wrong.
 
+**Leg 3 — hexagonal cells in `GridMap`.** A replacement candidate, run by a delegated agent under
+the same rules. **6,875 commits** of drift, 5 files conflicting, 22 conflicting hunks in the editor
+plugin alone. Cost: **331k tokens, 129 tool calls, ~7 build iterations, 40 minutes wall-clock.**
+
+Several conflicts were semantic rather than textual — upstream had replaced the edit-axis enum with
+a viewport-override mechanism, collapsed six cursor-rotation menu cases into one undo/redo block,
+and rebound the shortcut keys the change relied on. Mechanical conflict resolution would have
+produced something that compiled and was wrong.
+
+Two High-severity defects were found:
+
+- **`axial_round()` used integer `abs()`** on floating-point remainders, truncating them to zero,
+  so any point not dead-centre in a hexagon could resolve to the wrong cell. A one-character fix
+  (`Math::abs`) for a bug that silently broke every hex `local_to_map()`.
+- **`make_baked_meshes()` kept rectangular placement**, displacing every mesh in a baked hex map.
+
+Plus a `TypedArray<Basis>` that heap-allocated once per cell in three hot paths, three leaked RIDs
+(confirmed by editor-exit leak reports), and a public API method passing cell coordinates into a
+local-space setter.
+
+Result: **9 test cases / 250 assertions passing**, revert-proofed (reverting the two High fixes
+fails 2 cases / 17 assertions), clang-format clean, `--doctool` zero diff. Verified independently
+by re-running the suite and inspecting the fixes rather than taking the agent's word for it.
+
+**What legs 1 and 3 have in common** is the useful signal: in both cases the *rebase* was routine
+and the *value* was in the review. Five defects in one, six-plus in the other, in code that humans
+had already reviewed. The stale-PR backlog is not just a queue of work to redo — it is a corpus of
+partially-reviewed code with real bugs still in it.
+
 ---
 
 ## The backlog, measured

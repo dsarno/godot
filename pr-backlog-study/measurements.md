@@ -90,7 +90,57 @@ This is a real and important cost-model input: **a correct triage outcome is oft
 or "reimplement", and reaching that verdict costs ~80k tokens of genuine analysis.** It is
 not a failure mode; it is the product.
 
-## F. Infrastructure findings
+## F. Pilot leg 3 — hexagonal GridMap cells (delegated agent), completed
+
+| quantity | measured |
+|---|---|
+| merge-base drift | 6,875 commits behind |
+| files conflicting | 5 (22 conflicting hunks in the editor plugin alone) |
+| **agent tokens** | **330,871** (exact — delegated agent) |
+| tool calls | 129 |
+| build iterations | ~7, 25–40 s each (ccache warm) |
+| wall-clock | ~40 min |
+| defects found | 2 High, 1 Medium perf, 3 leaked RIDs, 1 public-API bug, ~10 minor |
+| tests | 9 cases / 250 assertions passing |
+| revert-proof | yes — reverting the 2 High fixes fails 2 cases / 17 assertions |
+| gates | clang-format clean, `--doctool` zero diff, no warnings in module |
+| independent re-verification | tests re-run and fixes inspected by the orchestrator |
+
+High defects: `axial_round()` used integer `abs()` on float remainders (truncating to 0, so
+off-centre points resolved to the wrong hex cell); `make_baked_meshes()` kept rectangular
+placement, displacing every mesh in a baked hex map.
+
+**Cross-leg observation.** In both completed legs the rebase was routine and the value was in the
+review — 5 defects in leg 1, 6+ in leg 3, all in code humans had already reviewed. Token cost per
+hard PR landed at 275k (leg 1, partly estimated) and 331k (leg 3, exact).
+
+## G. Subsystem audit — `core/string`
+
+| quantity | measured |
+|---|---|
+| scope | `ustring.{h,cpp}`, `string_name.{h,cpp}`, `string_builder.{h,cpp}` |
+| lines read | ~7,360 in scope + ~600 supporting = ~8,000 |
+| **tokens** | **202,370** (exact) |
+| tool calls | 33 |
+| wall-clock | ~30 min |
+| findings | **29** — 2 High, 11 Medium, 16 Low; 28 verified, 1 likely |
+
+High findings: unchecked `int` overflow in `String::repeat()` capacity math with a discarded
+`resize_uninitialized()` error and an unconditional memcpy (script-reachable heap overflow);
+`_to_int()`'s overflow guard fires one digit late, so all 19-digit inputs bypass it.
+
+The second was **independently reproduced against a locally built engine**:
+
+```
+"9223372036854775807".to_int()  ->  9223372036854775807   (correct)
+"9223372036854775808".to_int()  -> -9223372036854775808   (silently wraps)
+"9999999999999999999".to_int()  -> -8446744073709551617
+"-9223372036854775809".to_int() ->  9223372036854775807   (negative in, positive out)
+```
+
+Extrapolation: ~35 comparable subsystems x ~200k tokens = ~7M tokens for a first full sweep.
+
+## H. Infrastructure findings
 
 - **Fork CI does not run.** All 9 Godot workflows are present and `state: active` on the fork,
   but GitHub disables Actions on forked repos until the owner enables them; the only run in
@@ -101,7 +151,7 @@ not a failure mode; it is the product.
 - Godot's own CI matrix is 7 jobs incl. ASan/UBSan/TSan, mono, doubles, 4 desktop + mobile +
   web platforms. Reproducing that per PR is the dominant compute cost at scale, not tokens.
 
-## G. Governance finding (decisive for the upstream path)
+## I. Governance finding (decisive for the upstream path)
 
 `godotengine/godot-contributing-docs` → `pull_requests/pull_request_guidelines.rst`:
 
