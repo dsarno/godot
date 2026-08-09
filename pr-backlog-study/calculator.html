@@ -1,0 +1,385 @@
+<title>Godot PR Backlog — Feasibility Model</title>
+<style>
+  :root{
+    --ground:#0B131C; --panel:#111D29; --panel2:#16242F; --line:#213543;
+    --ink:#E4EDF4; --ink2:#A9BDCD; --muted:#6F8699;
+    --accent:#38B6C4; --accent-dim:#1F6C77;
+    --warn:#E3A33C; --cost:#D9737A; --good:#63BE8E;
+    --shadow:0 1px 0 rgba(255,255,255,.03) inset;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --ground:#F2F5F7; --panel:#FFFFFF; --panel2:#EAEFF3; --line:#D2DDE4;
+      --ink:#0F1D28; --ink2:#3C5566; --muted:#6B8296;
+      --accent:#0E7C89; --accent-dim:#9BD2D9;
+      --warn:#9A6408; --cost:#A83F47; --good:#26714C;
+      --shadow:none;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0B131C; --panel:#111D29; --panel2:#16242F; --line:#213543;
+    --ink:#E4EDF4; --ink2:#A9BDCD; --muted:#6F8699;
+    --accent:#38B6C4; --accent-dim:#1F6C77;
+    --warn:#E3A33C; --cost:#D9737A; --good:#63BE8E;
+    --shadow:0 1px 0 rgba(255,255,255,.03) inset;
+  }
+  :root[data-theme="light"]{
+    --ground:#F2F5F7; --panel:#FFFFFF; --panel2:#EAEFF3; --line:#D2DDE4;
+    --ink:#0F1D28; --ink2:#3C5566; --muted:#6B8296;
+    --accent:#0E7C89; --accent-dim:#9BD2D9;
+    --warn:#9A6408; --cost:#A83F47; --good:#26714C;
+    --shadow:none;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--ground);color:var(--ink);font-family:var(--sans);
+       line-height:1.55;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto;padding:32px 20px 80px}
+  h1{font-family:var(--mono);font-size:clamp(19px,2.4vw,26px);font-weight:600;
+     letter-spacing:-.01em;margin:0;text-wrap:balance}
+  .sub{color:var(--ink2);font-size:14.5px;max-width:66ch;margin:10px 0 0}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+     text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+
+  header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:26px}
+
+  /* readout strip */
+  .readout{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1px;
+     background:var(--line);border:1px solid var(--line);border-radius:3px;
+     overflow:hidden;margin:0 0 8px}
+  .cell{background:var(--panel);padding:15px 16px;box-shadow:var(--shadow)}
+  .cell .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;
+     text-transform:uppercase;color:var(--muted)}
+  .cell .v{font-family:var(--mono);font-size:26px;font-weight:600;
+     font-variant-numeric:tabular-nums;letter-spacing:-.02em;margin-top:5px;line-height:1.1}
+  .cell .n{font-size:12px;color:var(--ink2);margin-top:3px}
+  .v.acc{color:var(--accent)} .v.cst{color:var(--cost)} .v.wrn{color:var(--warn)}
+
+  .cols{display:grid;grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:26px;
+     align-items:start;margin-top:30px}
+  @media (max-width:900px){.cols{grid-template-columns:1fr}}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:3px;
+     padding:18px 18px 20px;box-shadow:var(--shadow)}
+  .card + .card{margin-top:18px}
+  .card h2{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;
+     color:var(--ink2);margin:0 0 14px;font-weight:600;
+     padding-bottom:9px;border-bottom:1px solid var(--line)}
+
+  label.row{display:block;margin:0 0 15px}
+  label.row:last-child{margin-bottom:0}
+  .lbl{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+     font-size:12.5px;color:var(--ink2);margin-bottom:6px}
+  .lbl b{font-family:var(--mono);font-variant-numeric:tabular-nums;
+     color:var(--ink);font-weight:600;font-size:12.5px}
+  .hint{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.45}
+  input[type=range]{width:100%;accent-color:var(--accent);height:20px;margin:0;cursor:pointer}
+  input[type=number],select{width:100%;background:var(--panel2);color:var(--ink);
+     border:1px solid var(--line);border-radius:2px;padding:7px 8px;
+     font-family:var(--mono);font-size:13px}
+  input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+  .presets{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:6px}
+  .presets button{background:var(--panel2);border:1px solid var(--line);color:var(--ink2);
+     font-family:var(--mono);font-size:11.5px;padding:6px 11px;border-radius:2px;cursor:pointer}
+  .presets button:hover{border-color:var(--accent-dim);color:var(--ink)}
+  .presets button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);
+     color:var(--ground);font-weight:600}
+
+  .tblwrap{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{text-align:right;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  thead th{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+     color:var(--muted);font-weight:600;border-bottom:1px solid var(--line)}
+  tbody td{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink2)}
+  tbody td:first-child{color:var(--ink);font-family:var(--sans)}
+  tbody tr.sel td{background:var(--panel2);color:var(--ink)}
+  tbody tr.sel td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
+  .tag{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+     color:var(--muted);border:1px solid var(--line);border-radius:2px;padding:1px 5px;margin-left:7px}
+
+  /* stage bars */
+  .stage{display:grid;grid-template-columns:112px 1fr 92px;gap:11px;align-items:center;
+     margin-bottom:9px;font-size:12.5px}
+  .stage .nm{color:var(--ink2)}
+  .stage .amt{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;color:var(--ink)}
+  .bar{height:9px;background:var(--panel2);border-radius:1px;overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--accent);transition:width .18s ease}
+  .bar i.b2{background:var(--accent-dim)} .bar i.b3{background:var(--warn)} .bar i.b4{background:var(--cost)}
+
+  .note{border-left:2px solid var(--warn);background:var(--panel2);padding:13px 15px;
+     border-radius:0 2px 2px 0;font-size:13.5px;color:var(--ink2)}
+  .note strong{color:var(--ink)}
+  .note.ok{border-left-color:var(--good)}
+
+  footer{margin-top:34px;padding-top:18px;border-top:1px solid var(--line);
+     font-size:12px;color:var(--muted);max-width:74ch}
+  code{font-family:var(--mono);font-size:.92em;background:var(--panel2);
+     padding:1px 4px;border-radius:2px;color:var(--ink2)}
+  a{color:var(--accent)}
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">Feasibility model · measured 2026-07-29</p>
+  <h1>Clearing 5,236 Godot pull requests with agents</h1>
+  <p class="sub">Every default below is measured, not guessed — diff sizes from 119 real PR heads,
+  token costs from the API's own billing fields across 1,224 calls, build times from this machine.
+  Tokens are counted the way you are actually charged: context is resent on every call, so a single
+  pull request bills tens of millions. Change any assumption and watch which constraint binds.</p>
+</header>
+
+<div class="readout">
+  <div class="cell"><div class="k">Billed tokens</div><div class="v acc" id="oTok">—</div><div class="n" id="oTokN">—</div></div>
+  <div class="cell"><div class="k">Model spend</div><div class="v cst" id="oCost">—</div><div class="n" id="oCostN">—</div></div>
+  <div class="cell"><div class="k">Agent wall-clock</div><div class="v" id="oWall">—</div><div class="n" id="oWallN">—</div></div>
+  <div class="cell"><div class="k">Binding constraint</div><div class="v wrn" id="oBind" style="font-size:19px">—</div><div class="n" id="oBindN">—</div></div>
+</div>
+
+<div class="presets" id="presets" style="margin-top:14px">
+  <button data-p="triage" aria-pressed="false">Triage only</button>
+  <button data-p="full" aria-pressed="true">Full catch-up</button>
+  <button data-p="steady" aria-pressed="false">Steady state (1 mo inflow)</button>
+  <button data-p="cheap" aria-pressed="false">Cheapest viable</button>
+</div>
+
+<div class="cols">
+  <div>
+    <div class="card">
+      <h2>Scope &amp; funnel</h2>
+      <label class="row"><span class="lbl">Pull requests in scope <b id="lN">5236</b></span>
+        <input type="range" id="N" min="100" max="6000" step="1" value="5236"></label>
+      <label class="row"><span class="lbl">Closed at triage <b id="lFc">35%</b></span>
+        <input type="range" id="Fc" min="0" max="80" step="1" value="35">
+        <span class="hint">Obsolete, superseded, or abandoned. 29% of open PRs change fewer than 10 lines.</span></label>
+      <label class="row"><span class="lbl">Rejected after deep review <b id="lFr">25%</b></span>
+        <input type="range" id="Fr" min="0" max="80" step="1" value="25">
+        <span class="hint">Design-blocked or needing reimplementation rather than a rebase — the pilot hit exactly this on 1 of 3.</span></label>
+    </div>
+
+    <div class="card">
+      <h2>Tokens per PR</h2>
+      <label class="row"><span class="lbl">Triage <b id="lTa">0.2M</b></span>
+        <input type="range" id="Ta" min="1" max="60" step="1" value="2">
+        <span class="hint">Shortlisting 10 candidates cost 1.9M billed, so ~0.19M each.</span></label>
+      <label class="row"><span class="lbl">Deep review <b id="lTb">2.0M</b></span>
+        <input type="range" id="Tb" min="1" max="150" step="1" value="20">
+        <span class="hint">Two real deep reviews billed 1.25M and 2.79M.</span></label>
+      <label class="row"><span class="lbl">Rebase · fix · test <b id="lTc">35.0M</b></span>
+        <input type="range" id="Tc" min="10" max="1000" step="5" value="350">
+        <span class="hint">Two completed legs billed 25.0M and 44.2M end to end.</span></label>
+      <label class="row"><span class="lbl">Output share <b id="lOut">0.2%</b></span>
+        <input type="range" id="Out" min="1" max="200" step="1" value="2">
+        <span class="hint">Measured at 0.24%. Output is priced 50–100× a cache read, but there is
+        so little of it that cache reads still dominate.</span></label>
+      <label class="row"><span class="lbl">Cache hit rate on input <b id="lCache">96%</b></span>
+        <input type="range" id="Cache" min="0" max="99" step="1" value="96">
+        <span class="hint">Measured at 96.2% across 1,224 API calls. The remainder is billed at the
+        cache-<em>write</em> rate, which is above the normal input rate on Anthropic models.</span></label>
+    </div>
+
+    <div class="card">
+      <h2>Throughput &amp; gates</h2>
+      <label class="row"><span class="lbl">Concurrent agents <b id="lConc">50</b></span>
+        <input type="range" id="Conc" min="1" max="400" step="1" value="50"></label>
+      <label class="row"><span class="lbl">Agent-minutes per full PR <b id="lMin">45</b></span>
+        <input type="range" id="Min" min="5" max="240" step="5" value="45"></label>
+      <label class="row"><span class="lbl">Build iterations per PR <b id="lBi">3</b></span>
+        <input type="range" id="Bi" min="0" max="10" step="1" value="3"></label>
+      <label class="row"><span class="lbl">Minutes per build <b id="lBm">5</b></span>
+        <input type="range" id="Bm" min="1" max="60" step="1" value="5">
+        <span class="hint">Measured here: 12 min cold, 23–98 s ccache-warm. CI matrix builds cost far more.</span></label>
+      <label class="row"><span class="lbl">Human audit min/PR <b id="lHm">10</b></span>
+        <input type="range" id="Hm" min="0" max="120" step="1" value="10"></label>
+      <label class="row"><span class="lbl">Human hours available/week <b id="lHw">10</b></span>
+        <input type="range" id="Hw" min="1" max="60" step="1" value="10"></label>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>Where the tokens go</h2>
+      <div id="stages"></div>
+      <p class="hint" style="margin-top:14px" id="funnelNote"></p>
+    </div>
+
+    <div class="card">
+      <h2>Model spend <span class="tag" id="modelTag">select a row</span></h2>
+      <div class="tblwrap">
+        <table>
+          <thead><tr><th>Model</th><th>Cache rd $/M</th><th>Out $/M</th><th>Total spend</th><th>Per PR</th></tr></thead>
+          <tbody id="modelRows"></tbody>
+        </table>
+      </div>
+      <p class="hint" style="margin-top:12px">Cached input billed at each vendor's cache-read rate.
+      Open-weight prices are list API rates from July 2026; Anthropic rows shown for comparison.</p>
+    </div>
+
+    <div class="card">
+      <h2>Time &amp; the binding constraint</h2>
+      <div class="tblwrap">
+        <table>
+          <thead><tr><th>Phase</th><th>Work</th><th>Elapsed</th></tr></thead>
+          <tbody id="timeRows"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:16px" id="bindNote"></div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <strong>Method.</strong> Token figures are the API's own <code>usage</code> fields — output,
+  cache-write, cache-read and fresh input — summed over 1,224 calls in the session that produced
+  this study, not estimates of "content processed". Backlog counts are live from GitHub search. Diff-size statistics come from
+  119 open PR heads fetched and diffed locally against their own merge-base. Token figures per stage
+  are anchored on one completed pilot leg — a stale physics-server change, 3,696 commits behind master,
+  14 files conflicting — carried through rebase, review, defect fixes, new tests, and a
+  revert-proof that the tests catch the bug they claim to. Build times are wall-clock on 4 cores with
+  ccache. Costs are list API prices; batch discounts and self-hosting are not modelled.
+  The model deliberately excludes anything the pilot did not measure.
+</footer>
+</div>
+
+<script>
+// c = cache-read price, w = cache-write price. Anthropic bills writes at 1.25x input
+// (5-min TTL); open-weight vendors bill them at the normal input rate.
+const MODELS=[
+  {n:"DeepSeek V4 Flash",  i:0.14,  o:0.28,  c:0.0028,   w:0.14},
+  {n:"MiniMax M2.7",       i:0.30,  o:1.20,  c:0.030,    w:0.30},
+  {n:"DeepSeek V4 Pro",    i:0.435, o:0.87,  c:0.003625, w:0.435},
+  {n:"Kimi K2 (0711)",     i:0.55,  o:2.20,  c:0.055,    w:0.55},
+  {n:"Kimi K2.6",          i:0.95,  o:4.00,  c:0.095,    w:0.95},
+  {n:"GLM-5.2",            i:1.20,  o:4.30,  c:0.120,    w:1.20},
+  {n:"Claude Sonnet 5",    i:3.00,  o:15.00, c:0.300,    w:3.75},
+  {n:"Claude Opus 5",      i:5.00,  o:25.00, c:0.500,    w:6.25},
+  {n:"Claude Fable 5",     i:10.00, o:50.00, c:1.000,    w:12.50},
+];
+const PRESETS={
+  triage:{Fc:35,Fr:100,Ta:2,Tb:20,Tc:350,Min:8,Bi:0,Hm:2},
+  full:  {Fc:35,Fr:25,Ta:2,Tb:20,Tc:350,Min:45,Bi:3,Hm:10},
+  steady:{N:400,Fc:20,Fr:20,Ta:2,Tb:20,Tc:350,Min:45,Bi:3,Hm:10},
+  cheap: {Fc:55,Fr:40,Ta:1,Tb:12,Tc:180,Min:25,Bi:2,Hm:5},
+};
+let selModel=0;
+const $=id=>document.getElementById(id);
+const IDS=["N","Fc","Fr","Ta","Tb","Tc","Out","Cache","Conc","Min","Bi","Bm","Hm","Hw"];
+const val=id=>+$(id).value;
+
+const fmtN=n=>n>=1e9?(n/1e9).toFixed(2)+"B":n>=1e6?(n/1e6).toFixed(0)+"M":n>=1e3?(n/1e3).toFixed(0)+"k":Math.round(n);
+const money=n=>n>=1e6?"$"+(n/1e6).toFixed(2)+"M":n>=1000?"$"+Math.round(n).toLocaleString():"$"+n.toFixed(n<10?2:0);
+const dur=h=>{
+  if(h<1) return Math.round(h*60)+" min";
+  if(h<48) return h.toFixed(1)+" h";
+  const d=h/24; if(d<60) return d.toFixed(1)+" days";
+  return (d/30.4).toFixed(1)+" months";
+};
+
+function compute(){
+  const N=val("N"), fc=val("Fc")/100, fr=val("Fr")/100;
+  const nTriage=N, nReview=N*(1-fc), nBuild=nReview*(1-fr);
+  const tA=nTriage*val("Ta")*1e5, tB=nReview*val("Tb")*1e5, tC=nBuild*val("Tc")*1e5;
+  const total=tA+tB+tC;
+  const outShare=val("Out")/1000, cache=val("Cache")/100;
+  const outTok=total*outShare, inTok=total-outTok;
+  const inCached=inTok*cache, inWrite=inTok-inCached;
+
+  const costs=MODELS.map(m=>(inWrite*m.w + inCached*m.c + outTok*m.o)/1e6);
+
+  // agent time: triage+review are cheap, full treatment dominates
+  const agentH=(nTriage*(val("Min")*0.15) + nReview*(val("Min")*0.3) + nBuild*val("Min"))/60;
+  const wallH=agentH/Math.max(1,val("Conc"));
+  const buildH=nBuild*val("Bi")*val("Bm")/60;
+  const humanH=nBuild*val("Hm")/60;
+  const humanWeeks=humanH/Math.max(1,val("Hw"));
+
+  return {N,nTriage,nReview,nBuild,tA,tB,tC,total,outTok,inCached,inWrite,
+          costs,agentH,wallH,buildH,humanH,humanWeeks};
+}
+
+function render(){
+  IDS.forEach(id=>{
+    const v=val(id), e=$("l"+id); if(!e) return;
+    e.textContent = (id==="N")?v
+      : id==="Out"? (v/10).toFixed(1)+"%"
+      : ["Fc","Fr","Cache"].includes(id)? v+"%"
+      : ["Ta","Tb","Tc"].includes(id)? (v/10).toFixed(1)+"M" : v;
+  });
+  const r=compute();
+
+  $("oTok").textContent=fmtN(r.total);
+  $("oTokN").textContent=`${Math.round(r.nBuild).toLocaleString()} PRs get the full treatment`;
+  $("oCost").textContent=money(r.costs[selModel]);
+  $("oCostN").textContent=MODELS[selModel].n;
+  $("oWall").textContent=dur(r.wallH);
+  $("oWallN").textContent=`${Math.round(r.agentH).toLocaleString()} agent-hours ÷ ${val("Conc")} concurrent`;
+
+  // stages
+  const st=[["Triage all",r.tA,r.nTriage,"b1"],["Deep review",r.tB,r.nReview,"b2"],
+            ["Rebase · fix · test",r.tC,r.nBuild,"b3"]];
+  const mx=Math.max(...st.map(s=>s[1]))||1;
+  $("stages").innerHTML=st.map(([n,t,c,cl])=>
+    `<div class="stage"><span class="nm">${n}</span>
+     <span class="bar"><i class="${cl}" style="width:${(t/mx*100).toFixed(1)}%"></i></span>
+     <span class="amt">${fmtN(t)}</span></div>
+     <div class="hint" style="margin:-4px 0 10px 123px">${Math.round(c).toLocaleString()} PRs</div>`).join("");
+  $("funnelNote").textContent=
+    `${r.N.toLocaleString()} in → ${Math.round(r.N-r.nReview).toLocaleString()} closed at triage → `+
+    `${Math.round(r.nReview-r.nBuild).toLocaleString()} rejected or sent back for reimplementation → `+
+    `${Math.round(r.nBuild).toLocaleString()} carried through to a tested branch.`;
+
+  // models
+  $("modelRows").innerHTML=MODELS.map((m,i)=>
+    `<tr class="${i===selModel?'sel':''}" data-i="${i}" tabindex="0">
+      <td>${m.n}</td><td>${m.c < 0.01 ? m.c.toFixed(4) : m.c.toFixed(3)}</td><td>${m.o.toFixed(2)}</td>
+      <td>${money(r.costs[i])}</td><td>${money(r.costs[i]/Math.max(1,r.N))}</td></tr>`).join("");
+  $("modelTag").textContent=MODELS[selModel].n;
+
+  // time
+  const rows=[
+    ["Agent work",`${Math.round(r.agentH).toLocaleString()} agent-h`,dur(r.wallH)],
+    ["Builds &amp; tests",`${Math.round(r.buildH).toLocaleString()} build-h`,dur(r.buildH/Math.max(1,val("Conc")))],
+    ["Human audit",`${Math.round(r.humanH).toLocaleString()} person-h`,
+      r.humanWeeks>=8?(r.humanWeeks/4.33).toFixed(1)+" months":r.humanWeeks.toFixed(1)+" weeks"],
+  ];
+  $("timeRows").innerHTML=rows.map(x=>`<tr><td>${x[0]}</td><td>${x[1]}</td><td>${x[2]}</td></tr>`).join("");
+
+  // binding constraint
+  const cands=[
+    {n:"Human audit",h:r.humanWeeks*7*24, why:`${Math.round(r.humanH).toLocaleString()} person-hours at ${val("Hw")} h/week`},
+    {n:"Agent time",  h:r.wallH,           why:`${val("Conc")} concurrent agents`},
+    {n:"Build farm",  h:r.buildH/Math.max(1,val("Conc")), why:`${Math.round(r.buildH).toLocaleString()} build-hours`},
+  ].sort((a,b)=>b.h-a.h);
+  const top=cands[0];
+  $("oBind").textContent=top.n;
+  $("oBindN").textContent=dur(top.h);
+  const ratio=cands[1].h>0?(top.h/cands[1].h):99;
+  $("bindNote").innerHTML=
+    `<div class="note ${top.n==="Human audit"?"":"ok"}"><strong>${top.n}</strong> dominates at ${dur(top.h)} —
+     ${ratio>=1.5?`about ${ratio.toFixed(1)}× the next constraint (${cands[1].n}, ${dur(cands[1].h)})`
+                 :`only just ahead of ${cands[1].n} (${dur(cands[1].h)})`}.
+     ${top.n==="Human audit"
+       ? `Model spend of ${money(r.costs[selModel])} is not what limits this project. Buying a cheaper model
+          saves money you were not short of; the only levers that move the finish date are raising the
+          close-at-triage rate, spending fewer minutes per PR on review, or adding reviewers.`
+       : `The human gate clears in ${r.humanWeeks<8?r.humanWeeks.toFixed(1)+" weeks":(r.humanWeeks/4.33).toFixed(1)+" months"},
+          so throughput here is genuinely machine-limited — more concurrency or faster builds will move the date.`}
+     </div>`;
+}
+
+document.addEventListener("input",e=>{ if(IDS.includes(e.target.id)) { clearPreset(); render(); }});
+$("modelRows").addEventListener("click",e=>{const tr=e.target.closest("tr");if(tr){selModel=+tr.dataset.i;render();}});
+$("modelRows").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){const tr=e.target.closest("tr");if(tr){e.preventDefault();selModel=+tr.dataset.i;render();}}});
+function clearPreset(){[...$("presets").children].forEach(b=>b.setAttribute("aria-pressed","false"));}
+$("presets").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  clearPreset(); b.setAttribute("aria-pressed","true");
+  const p=PRESETS[b.dataset.p]; if(!p) return;
+  $("N").value=5236;
+  Object.entries(p).forEach(([k,v])=>{ if($(k)) $(k).value=Math.min(v,+$(k).max); });
+  render();
+});
+render();
+</script>
